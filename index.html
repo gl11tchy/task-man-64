@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WORKSTATION // ARCADE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              arcade: {
+                bg: '#1a1b4b',
+                panel: 'rgba(46, 44, 94, 0.9)',
+                screen: '#0f102a',
+                pink: '#ff00ff',
+                cyan: '#00ffff',
+                yellow: '#ffff00',
+                purple: '#9d00ff',
+              }
+            },
+            fontFamily: {
+              game: ['"Press Start 2P"', 'cursive'],
+              pixel: ['"VT323"', 'monospace'],
+            },
+            boxShadow: {
+              'neon-pink': '0 0 10px #ff00ff, 0 0 20px #ff00ff',
+              'neon-cyan': '0 0 10px #00ffff, 0 0 20px #00ffff',
+              'neon-yellow': '0 0 10px #ffff00, 0 0 20px #ffff00',
+            },
+            animation: {
+              'float': 'float 3s ease-in-out infinite',
+              'grid-scroll': 'gridScroll 20s linear infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              },
+              gridScroll: {
+                '0%': { backgroundPosition: '0 0' },
+                '100%': { backgroundPosition: '0 100px' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #050510;
+        color: #fff;
+        overflow: hidden;
+      }
+      
+      .retro-grid {
+        background-image: 
+          linear-gradient(rgba(157, 0, 255, 0.3) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(157, 0, 255, 0.3) 1px, transparent 1px);
+        background-size: 40px 40px;
+        perspective: 1000px;
+        transform-style: preserve-3d;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 12px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1a1b4b; 
+        border-left: 2px solid #2e2c5e;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #ff00ff; 
+        border: 2px solid #fff;
+        box-shadow: inset -2px -2px 0px rgba(0,0,0,0.5);
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #d900d9; 
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.25"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
