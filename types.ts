@@ -6,6 +6,7 @@ export interface Task {
   status: TaskStatus;
   createdAt: number;
   completedAt?: number;
+  user_id?: string | null;
 }
 
 export enum AppMode {

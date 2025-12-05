@@ -1,19 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Layout } from './components/Layout';
 import { ModeToggle } from './components/ModeToggle';
 import { TaskInput } from './components/TaskInput';
 import { FocusView } from './components/FocusView';
 import { ListView } from './components/ListView';
+import { UserMenu } from './components/UserMenu';
 import { Task, AppMode } from './types';
 import { useAudio } from './hooks/useAudio';
+import { useAuth } from './contexts/AuthContext';
+import { TaskStorage } from './services/taskStorage';
 import { Volume2, VolumeX, Star } from 'lucide-react';
-import { supabase } from './supabase';
 
 const STORAGE_KEY = 'workstation_score';
 
 export default function App() {
-  // State
+  const { user, loading: authLoading } = useAuth();
+  const storageRef = useRef(new TaskStorage());
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [mode, setMode] = useState<AppMode>(AppMode.AUTO);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -21,23 +25,20 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [muted, setMuted] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [migrationDone, setMigrationDone] = useState(false);
 
-  // Audio Hook
   const { playSound } = useAudio(muted);
 
-  // Load from Supabase
+  useEffect(() => {
+    storageRef.current.setUserId(user?.id || null);
+  }, [user]);
+
   useEffect(() => {
     const loadData = async () => {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (authLoading) return;
 
-      if (error) {
-        console.error('Failed to load tasks:', error);
-      } else if (data) {
-        setTasks(data);
-      }
+      const loadedTasks = await storageRef.current.loadTasks();
+      setTasks(loadedTasks);
 
       const savedScore = localStorage.getItem(STORAGE_KEY);
       if (savedScore) {
@@ -48,7 +49,23 @@ export default function App() {
     };
 
     loadData();
-  }, []);
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    const migrateData = async () => {
+      if (!user || migrationDone || !isInitialized) return;
+
+      const result = await storageRef.current.migrateLocalToCloud();
+      if (result.success && result.count > 0) {
+        const loadedTasks = await storageRef.current.loadTasks();
+        setTasks(loadedTasks);
+        playSound('success');
+      }
+      setMigrationDone(true);
+    };
+
+    migrateData();
+  }, [user, migrationDone, isInitialized, playSound]);
 
   // Save score to localStorage (keep score local for now)
   useEffect(() => {
@@ -65,7 +82,6 @@ export default function App() {
     .filter(t => t.status === 'completed')
     .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
-  // Task Management
   const addTask = async (text: string) => {
     const newTask: Task = {
       id: uuidv4(),
@@ -74,12 +90,10 @@ export default function App() {
       createdAt: Date.now(),
     };
 
-    const { error } = await supabase
-      .from('tasks')
-      .insert([newTask]);
+    const result = await storageRef.current.addTask(newTask);
 
-    if (error) {
-      console.error('Failed to add task:', error);
+    if (!result.success) {
+      console.error('Failed to add task:', result.error);
       return;
     }
 
@@ -91,7 +105,6 @@ export default function App() {
   const completeTask = async () => {
     let taskToCompleteId = selectedTaskId;
 
-    // In Auto mode, default to the top active task if none selected
     if (mode === AppMode.AUTO && !taskToCompleteId) {
         if (activeTasks.length > 0) {
             taskToCompleteId = activeTasks[0].id;
@@ -101,13 +114,13 @@ export default function App() {
     if (!taskToCompleteId) return;
 
     const completedAt = Date.now();
-    const { error } = await supabase
-      .from('tasks')
-      .update({ status: 'completed', completedAt })
-      .eq('id', taskToCompleteId);
+    const result = await storageRef.current.updateTask(taskToCompleteId, {
+      status: 'completed',
+      completedAt
+    });
 
-    if (error) {
-      console.error('Failed to complete task:', error);
+    if (!result.success) {
+      console.error('Failed to complete task:', result.error);
       return;
     }
 
@@ -123,13 +136,10 @@ export default function App() {
   };
 
   const deleteTask = async (id: string) => {
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id);
+    const result = await storageRef.current.deleteTask(id);
 
-    if (error) {
-      console.error('Failed to delete task:', error);
+    if (!result.success) {
+      console.error('Failed to delete task:', result.error);
       return;
     }
 
@@ -139,13 +149,13 @@ export default function App() {
   };
 
   const restoreTask = async (id: string) => {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: 'todo', completedAt: null })
-        .eq('id', id);
+      const result = await storageRef.current.updateTask(id, {
+        status: 'todo',
+        completedAt: undefined
+      });
 
-      if (error) {
-        console.error('Failed to restore task:', error);
+      if (!result.success) {
+        console.error('Failed to restore task:', result.error);
         return;
       }
 
@@ -188,9 +198,8 @@ export default function App() {
       {/* Header / Status Bar */}
       <div className="flex items-center justify-between px-6 py-4 bg-black/20 border-b border-white/5 backdrop-blur-sm shrink-0">
         <ModeToggle mode={mode} onToggle={handleModeToggle} />
-        
-        <div className="flex items-center gap-6">
-           {/* Score Display */}
+
+        <div className="flex items-center gap-4">
            <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-lg border border-white/10">
              <Star size={14} className="text-arcade-yellow fill-arcade-yellow animate-pulse" />
              <div className="flex flex-col items-end">
@@ -201,15 +210,16 @@ export default function App() {
              </div>
            </div>
 
-           <button 
+           <button
              onClick={() => {
                 setMuted(!muted);
-                // playSound is not available if muted just changed to true, logic handled in hook
-             }} 
+             }}
              className="text-white/30 hover:text-white transition-colors"
            >
              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
            </button>
+
+           <UserMenu />
         </div>
       </div>
 
