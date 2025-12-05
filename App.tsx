@@ -8,8 +8,9 @@ import { ListView } from './components/ListView';
 import { Task, AppMode } from './types';
 import { useAudio } from './hooks/useAudio';
 import { Volume2, VolumeX, Star } from 'lucide-react';
+import { supabase } from './supabase';
 
-const STORAGE_KEY = 'workstation_tasks_v2';
+const STORAGE_KEY = 'workstation_score';
 
 export default function App() {
   // State
@@ -24,36 +25,37 @@ export default function App() {
   // Audio Hook
   const { playSound } = useAudio(muted);
 
-  // Load from LocalStorage
+  // Load from Supabase
   useEffect(() => {
-    const savedTasks = localStorage.getItem(STORAGE_KEY);
-    const savedScore = localStorage.getItem(STORAGE_KEY + '_score');
-    if (savedTasks) {
-      try {
-        const parsed = JSON.parse(savedTasks);
-        // Migration support for old task format
-        const migrated = parsed.map((t: any) => ({
-             ...t,
-             status: t.status || 'todo'
-        }));
-        setTasks(migrated);
-      } catch (e) {
-        console.error("Failed to load tasks", e);
+    const loadData = async () => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Failed to load tasks:', error);
+      } else if (data) {
+        setTasks(data);
       }
-    }
-    if (savedScore) {
+
+      const savedScore = localStorage.getItem(STORAGE_KEY);
+      if (savedScore) {
         setScore(parseInt(savedScore, 10));
-    }
-    setIsInitialized(true);
+      }
+
+      setIsInitialized(true);
+    };
+
+    loadData();
   }, []);
 
-  // Save to LocalStorage
+  // Save score to localStorage (keep score local for now)
   useEffect(() => {
     if (isInitialized) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-      localStorage.setItem(STORAGE_KEY + '_score', score.toString());
+      localStorage.setItem(STORAGE_KEY, score.toString());
     }
-  }, [tasks, score, isInitialized]);
+  }, [score, isInitialized]);
 
   // Derived Lists
   // For Active tasks: Keep original ordering (Reorderable)
@@ -64,22 +66,31 @@ export default function App() {
     .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
   // Task Management
-  const addTask = (text: string) => {
+  const addTask = async (text: string) => {
     const newTask: Task = {
       id: uuidv4(),
       text,
       status: 'todo',
       createdAt: Date.now(),
     };
-    // Add to top of active list
+
+    const { error } = await supabase
+      .from('tasks')
+      .insert([newTask]);
+
+    if (error) {
+      console.error('Failed to add task:', error);
+      return;
+    }
+
     setTasks(prev => [newTask, ...prev]);
-    setCurrentTab('active'); // Switch to active tab so user sees it
+    setCurrentTab('active');
     playSound('click');
   };
 
-  const completeTask = () => {
+  const completeTask = async () => {
     let taskToCompleteId = selectedTaskId;
-    
+
     // In Auto mode, default to the top active task if none selected
     if (mode === AppMode.AUTO && !taskToCompleteId) {
         if (activeTasks.length > 0) {
@@ -89,26 +100,56 @@ export default function App() {
 
     if (!taskToCompleteId) return;
 
-    // Update task status
-    setTasks(prev => prev.map(t => 
-        t.id === taskToCompleteId 
-        ? { ...t, status: 'completed', completedAt: Date.now() } 
+    const completedAt = Date.now();
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: 'completed', completedAt })
+      .eq('id', taskToCompleteId);
+
+    if (error) {
+      console.error('Failed to complete task:', error);
+      return;
+    }
+
+    setTasks(prev => prev.map(t =>
+        t.id === taskToCompleteId
+        ? { ...t, status: 'completed', completedAt }
         : t
     ));
 
     setScore(prev => prev + 100);
-    setSelectedTaskId(null); // Return to list view (in manual)
+    setSelectedTaskId(null);
     playSound('success');
   };
 
-  const deleteTask = (id: string) => {
+  const deleteTask = async (id: string) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Failed to delete task:', error);
+      return;
+    }
+
     setTasks(prev => prev.filter(t => t.id !== id));
     if (selectedTaskId === id) setSelectedTaskId(null);
     playSound('delete');
   };
 
-  const restoreTask = (id: string) => {
-      setTasks(prev => prev.map(t => 
+  const restoreTask = async (id: string) => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: 'todo', completedAt: null })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Failed to restore task:', error);
+        return;
+      }
+
+      setTasks(prev => prev.map(t =>
         t.id === id ? { ...t, status: 'todo', completedAt: undefined } : t
       ));
       setCurrentTab('active');
