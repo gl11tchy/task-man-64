@@ -56,14 +56,18 @@ export class TaskStorage {
       return { success: true, count: 0 };
     }
 
-    const tasksWithUserId = localTasks.map(task => ({
-      ...task,
+    const tasksForDb = localTasks.map(task => ({
+      id: task.id,
+      text: task.text,
+      status: task.status,
+      created_at: new Date(task.createdAt).toISOString(),
+      completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
       user_id: this.userId,
     }));
 
     const { error } = await supabase
       .from('tasks')
-      .insert(tasksWithUserId);
+      .insert(tasksForDb);
 
     if (error) {
       return { success: false, count: 0, error: error as Error };
@@ -131,7 +135,14 @@ export class TaskStorage {
         return [];
       }
 
-      return data || [];
+      return (data || []).map(row => ({
+        id: row.id,
+        text: row.text,
+        status: row.status,
+        createdAt: new Date(row.created_at).getTime(),
+        completedAt: row.completed_at ? new Date(row.completed_at).getTime() : undefined,
+        user_id: row.user_id,
+      }));
     } catch (error) {
       console.error('Failed to load from Supabase:', error);
       return [];
@@ -142,7 +153,14 @@ export class TaskStorage {
     try {
       const { error } = await supabase
         .from('tasks')
-        .insert([{ ...task, user_id: this.userId }]);
+        .insert([{
+          id: task.id,
+          text: task.text,
+          status: task.status,
+          created_at: new Date(task.createdAt).toISOString(),
+          completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
+          user_id: this.userId,
+        }]);
 
       if (error) {
         return { success: false, error: error as Error };
@@ -156,9 +174,17 @@ export class TaskStorage {
 
   private async updateInSupabase(id: string, updates: Partial<Task>): Promise<{ success: boolean; error?: Error }> {
     try {
+      const dbUpdates: Record<string, any> = {};
+
+      if (updates.text !== undefined) dbUpdates.text = updates.text;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.completedAt !== undefined) {
+        dbUpdates.completed_at = updates.completedAt ? new Date(updates.completedAt).toISOString() : null;
+      }
+
       const { error } = await supabase
         .from('tasks')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', id)
         .eq('user_id', this.userId);
 
