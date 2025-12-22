@@ -1,10 +1,12 @@
 import React from 'react';
+import { Sidebar } from './Sidebar';
 
 interface LayoutProps {
   children: React.ReactNode;
+  showSidebar?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, showSidebar = true }) => {
   return (
     <div className="min-h-screen bg-[#050510] flex items-center justify-center p-2 sm:p-6 overflow-hidden relative">
 
@@ -18,8 +20,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050510_100%)] z-0 pointer-events-none"></div>
 
       {/* Console Frame */}
-      <div className="relative w-full max-w-3xl h-[90vh] bg-arcade-panel/90 backdrop-blur-md rounded-[30px] p-3 sm:p-5 shadow-[0_0_50px_rgba(157,0,255,0.4)] border-4 border-[#ffffff20] ring-4 ring-arcade-purple z-10 flex flex-col">
-        
+      <div className="relative w-full max-w-6xl h-[90vh] bg-arcade-panel/90 backdrop-blur-md rounded-[30px] p-3 sm:p-5 shadow-[0_0_50px_rgba(157,0,255,0.4)] border-4 border-[#ffffff20] ring-4 ring-arcade-purple z-10 flex flex-col">
+
         {/* Decorative Top Bar (Handheld style) */}
         <div className="h-6 flex justify-between items-center px-4 mb-2 opacity-60">
             <div className="flex gap-1">
@@ -35,20 +37,23 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         {/* Inner Screen Container */}
         <div className="flex-1 relative bg-arcade-screen rounded-xl overflow-hidden border-4 border-black shadow-inner">
-          
-          {/* Main Content Area */}
-          <div className="relative z-0 h-full w-full flex flex-col text-white selection:bg-arcade-pink selection:text-white">
-             {children}
+
+          {/* Main Content Area with Sidebar */}
+          <div className="relative z-0 h-full w-full flex text-white selection:bg-arcade-pink selection:text-white">
+            {showSidebar && <Sidebar />}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {children}
+            </div>
           </div>
         </div>
-        
+
         {/* Decorative Bottom Area */}
         <div className="h-10 mt-3 flex justify-between items-center px-6">
             <div className="flex gap-3">
                  <div className="w-3 h-3 rounded-full bg-arcade-pink animate-pulse shadow-neon-pink"></div>
                  <div className="w-3 h-3 rounded-full bg-arcade-cyan shadow-neon-cyan opacity-50"></div>
             </div>
-            
+
             {/* Ventilation Grills */}
             <div className="flex gap-1">
                 {[...Array(6)].map((_, i) => (
