@@ -49,7 +49,7 @@ interface ProjectState {
   deleteTask: (id: string) => Promise<void>;
   completeTask: (id: string) => Promise<void>;
   restoreTask: (id: string) => Promise<void>;
-  moveTaskToColumn: (taskId: string, columnId: string, position: number) => Promise<void>;
+  moveTaskToColumn: (taskId: string, columnId: string, position: number, persistImmediately?: boolean) => Promise<void>;
   moveTaskToBacklog: (taskId: string, position?: number) => Promise<void>;
   promoteFromBacklog: (taskId: string, columnId?: string) => Promise<void>;
   reorderTasks: (tasks: Task[]) => void;
@@ -149,6 +149,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
 
         tasks = await taskStorage.loadTasks();
+
+        // Migrate legacy tasks with 'default' projectId to the actual default project
+        const defaultColumnId = columns.find(c => c.position === 0)?.id;
+        const legacyTasks = tasks.filter(t => t.projectId === 'default');
+        if (legacyTasks.length > 0 && currentProjectId) {
+          for (const task of legacyTasks) {
+            const updates: Partial<Task> = {
+              projectId: currentProjectId,
+            };
+            // If task has no column assigned, put it in the first column
+            if (!task.kanbanColumnId && !task.isInBacklog && defaultColumnId) {
+              updates.kanbanColumnId = defaultColumnId;
+              updates.kanbanPosition = 0;
+            }
+            await taskStorage.updateTask(task.id, updates);
+          }
+          // Reload tasks after migration
+          tasks = await taskStorage.loadTasks();
+        }
+
         projectStorage.setCurrentProjectId(currentProjectId);
       }
 
@@ -237,13 +257,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         p.id === id ? { ...p, isArchived: true } : p
       );
 
-      // If archiving current project, switch to another
-      let newCurrentId = currentProjectId;
+      // If archiving current project, switch to another or create new
       if (currentProjectId === id) {
         const activeProjects = updatedProjects.filter(p => !p.isArchived);
-        newCurrentId = activeProjects[0]?.id || null;
-        if (newCurrentId) {
-          await get().setCurrentProject(newCurrentId);
+
+        if (activeProjects.length > 0) {
+          // Switch to another active project
+          await get().setCurrentProject(activeProjects[0].id);
+        } else {
+          // No active projects left - create a new default project
+          const newProject = await get().createProject('Personal', undefined, 'Your personal task space');
+          if (newProject) {
+            await get().setCurrentProject(newProject.id);
+            updatedProjects.push(newProject);
+          }
         }
       }
 
@@ -443,11 +470,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  moveTaskToColumn: async (taskId, columnId, position) => {
-    const { taskStorage, columns } = get();
+  moveTaskToColumn: async (taskId, columnId, position, persistImmediately = true) => {
+    const { taskStorage, columns, tasks } = get();
     if (!taskStorage) return;
 
     const column = columns.find(c => c.id === columnId);
+    const existingTask = tasks.find(t => t.id === taskId);
+
     const updates: Partial<Task> = {
       kanbanColumnId: columnId,
       kanbanPosition: position,
@@ -455,22 +484,36 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       backlogPosition: null,
     };
 
-    // If moving to done column, mark as completed
+    // If moving to done column, mark as completed (but preserve existing completedAt)
     if (column?.isDoneColumn) {
       updates.status = 'completed';
-      updates.completedAt = Date.now();
+      // Only set completedAt if task wasn't already completed
+      if (existingTask?.status !== 'completed') {
+        updates.completedAt = Date.now();
+      }
     } else {
       updates.status = 'todo';
       updates.completedAt = undefined;
     }
 
-    const result = await taskStorage.updateTask(taskId, updates);
-    if (result.success) {
-      set((state) => ({
-        tasks: state.tasks.map(t =>
-          t.id === taskId ? { ...t, ...updates } : t
-        ),
-      }));
+    // Update local state immediately (optimistic update)
+    set((state) => ({
+      tasks: state.tasks.map(t =>
+        t.id === taskId ? { ...t, ...updates } : t
+      ),
+    }));
+
+    // Persist to storage if requested
+    if (persistImmediately) {
+      const result = await taskStorage.updateTask(taskId, updates);
+      if (!result.success) {
+        // Rollback on failure
+        set((state) => ({
+          tasks: state.tasks.map(t =>
+            t.id === taskId && existingTask ? existingTask : t
+          ),
+        }));
+      }
     }
   },
 
@@ -547,7 +590,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
   },
 
-  reorderBacklogTasks: (reorderedTasks) => {
+  reorderBacklogTasks: async (reorderedTasks) => {
+    const { taskStorage, currentProjectId } = get();
+
     // Update backlog positions
     const updatedTasks = reorderedTasks.map((t, index) => ({
       ...t,
@@ -555,11 +600,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }));
 
     set((state) => {
-      const otherTasks = state.tasks.filter(t => !t.isInBacklog);
+      // Keep all tasks except the ones being reordered
+      const reorderedIds = new Set(reorderedTasks.map(t => t.id));
+      const otherTasks = state.tasks.filter(t => !reorderedIds.has(t.id));
       return {
         tasks: [...updatedTasks, ...otherTasks],
       };
     });
+
+    // Persist the new positions
+    if (taskStorage) {
+      const positionUpdates = updatedTasks.map(t => ({
+        id: t.id,
+        backlogPosition: t.backlogPosition,
+      }));
+      await taskStorage.updateTaskPositions(positionUpdates);
+    }
   },
 
   refreshTasks: async () => {

@@ -390,20 +390,22 @@ export const KanbanBoard: React.FC = () => {
     if (overColumn) {
       // Dragging over a column directly
       if (activeTask.kanbanColumnId !== overColumn.id) {
-        moveTaskToColumn(activeId, overColumn.id, 0);
+        // Don't persist during drag - only update local state
+        moveTaskToColumn(activeId, overColumn.id, 0, false);
       }
     } else if (overTask) {
       // Dragging over another task
       if (activeTask.kanbanColumnId !== overTask.kanbanColumnId) {
         const overTaskColumn = overTask.kanbanColumnId;
         if (overTaskColumn) {
-          moveTaskToColumn(activeId, overTaskColumn, overTask.kanbanPosition ?? 0);
+          // Don't persist during drag - only update local state
+          moveTaskToColumn(activeId, overTaskColumn, overTask.kanbanPosition ?? 0, false);
         }
       }
     }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
 
@@ -412,14 +414,16 @@ export const KanbanBoard: React.FC = () => {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    if (activeId === overId) return;
-
     const activeTask = tasks.find((t) => t.id === activeId);
-    const overTask = tasks.find((t) => t.id === overId);
-
     if (!activeTask) return;
 
-    if (overTask && activeTask.kanbanColumnId === overTask.kanbanColumnId) {
+    const overColumn = columns.find((col) => col.id === overId);
+    const overTask = tasks.find((t) => t.id === overId);
+
+    if (overColumn) {
+      // Dropped on a column - persist the final position
+      await moveTaskToColumn(activeId, overColumn.id, 0, true);
+    } else if (overTask && activeTask.kanbanColumnId === overTask.kanbanColumnId) {
       // Reordering within the same column
       const columnTasks = tasksByColumn[activeTask.kanbanColumnId || ''] || [];
       const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
@@ -427,12 +431,19 @@ export const KanbanBoard: React.FC = () => {
 
       if (oldIndex !== -1 && newIndex !== -1) {
         const reordered = arrayMove(columnTasks, oldIndex, newIndex);
-        // Update positions
-        reordered.forEach((task, index) => {
+        // Persist final positions
+        for (let index = 0; index < reordered.length; index++) {
+          const task = reordered[index];
           if (task.kanbanPosition !== index) {
-            moveTaskToColumn(task.id, task.kanbanColumnId!, index);
+            await moveTaskToColumn(task.id, task.kanbanColumnId!, index, true);
           }
-        });
+        }
+      }
+    } else if (overTask) {
+      // Dropped on a task in a different column - persist the move
+      const targetColumnId = overTask.kanbanColumnId;
+      if (targetColumnId) {
+        await moveTaskToColumn(activeId, targetColumnId, overTask.kanbanPosition ?? 0, true);
       }
     }
   };

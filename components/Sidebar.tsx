@@ -120,47 +120,45 @@ const ProjectSwitcher: React.FC<ProjectSwitcherProps> = ({ collapsed }) => {
     }
   };
 
-  if (collapsed) {
-    return (
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-white/5 transition-colors"
-      >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-          style={{ backgroundColor: currentProject?.color || PROJECT_COLORS[0] }}
-        >
-          {currentProject?.name.charAt(0).toUpperCase() || 'P'}
-        </div>
-      </button>
-    );
-  }
-
   return (
     <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors"
-      >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
-          style={{ backgroundColor: currentProject?.color || PROJECT_COLORS[0] }}
+      {collapsed ? (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center justify-center p-2 rounded-lg hover:bg-white/5 transition-colors"
         >
-          {currentProject?.name.charAt(0).toUpperCase() || 'P'}
-        </div>
-        <div className="flex-1 text-left overflow-hidden">
-          <p className="font-pixel text-sm text-white truncate">
-            {currentProject?.name || 'Select Project'}
-          </p>
-          <p className="text-xs text-white/40 font-pixel">
-            {activeProjects.length} project{activeProjects.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <ChevronDown
-          size={16}
-          className={`text-white/40 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
+            style={{ backgroundColor: currentProject?.color || PROJECT_COLORS[0] }}
+          >
+            {currentProject?.name.charAt(0).toUpperCase() || 'P'}
+          </div>
+        </button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors"
+        >
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
+            style={{ backgroundColor: currentProject?.color || PROJECT_COLORS[0] }}
+          >
+            {currentProject?.name.charAt(0).toUpperCase() || 'P'}
+          </div>
+          <div className="flex-1 text-left overflow-hidden">
+            <p className="font-pixel text-sm text-white truncate">
+              {currentProject?.name || 'Select Project'}
+            </p>
+            <p className="text-xs text-white/40 font-pixel">
+              {activeProjects.length} project{activeProjects.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <ChevronDown
+            size={16}
+            className={`text-white/40 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+      )}
 
       <AnimatePresence>
         {isOpen && (
@@ -168,7 +166,11 @@ const ProjectSwitcher: React.FC<ProjectSwitcherProps> = ({ collapsed }) => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute left-0 right-0 top-full mt-2 bg-arcade-screen border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden"
+            className={`absolute bg-arcade-screen border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden ${
+              collapsed
+                ? 'left-full top-0 ml-2 w-56'
+                : 'left-0 right-0 top-full mt-2'
+            }`}
           >
             <div className="max-h-64 overflow-y-auto">
               {activeProjects.map((project) => (
