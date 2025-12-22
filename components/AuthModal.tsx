@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { Portal } from './Portal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -49,8 +50,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-arcade-panel/95 backdrop-blur-md rounded-2xl p-6 shadow-[0_0_50px_rgba(157,0,255,0.4)] border-4 border-[#ffffff20] ring-4 ring-arcade-purple">
+    <Portal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="relative w-full max-w-md bg-arcade-panel/95 backdrop-blur-md rounded-2xl p-6 shadow-[0_0_50px_rgba(157,0,255,0.4)] border-4 border-[#ffffff20] ring-4 ring-arcade-purple">
 
         <button
           onClick={onClose}
@@ -179,8 +181,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           >
             Continue without account
           </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Portal>
   );
 };
