@@ -35,17 +35,12 @@
             },
             animation: {
               'float': 'float 3s ease-in-out infinite',
-              'grid-scroll': 'gridScroll 20s linear infinite',
             },
             keyframes: {
               float: {
                 '0%, 100%': { transform: 'translateY(0)' },
                 '50%': { transform: 'translateY(-10px)' },
               },
-              gridScroll: {
-                '0%': { backgroundPosition: '0 0' },
-                '100%': { backgroundPosition: '0 100px' },
-              }
             }
           }
         }
@@ -57,16 +52,50 @@
         color: #fff;
         overflow: hidden;
       }
-      
-      .retro-grid {
-        background-image: 
-          linear-gradient(rgba(157, 0, 255, 0.3) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(157, 0, 255, 0.3) 1px, transparent 1px);
-        background-size: 40px 40px;
-        perspective: 1000px;
-        transform-style: preserve-3d;
+
+      .perspective-container {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        perspective: 400px;
+        perspective-origin: 50% 50%;
       }
-      
+
+      .perspective-grid {
+        position: absolute;
+        left: -50%;
+        right: -50%;
+        bottom: -60%;
+        height: 200%;
+        background-image:
+          linear-gradient(to right, rgba(157, 0, 255, 0.4) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(157, 0, 255, 0.4) 1px, transparent 1px);
+        background-size: 60px 60px;
+        transform: rotateX(70deg);
+        animation: perspectiveScroll 12s linear infinite;
+      }
+
+      .grid-fade {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to bottom,
+          #050510 0%,
+          transparent 30%,
+          transparent 70%,
+          #050510 100%
+        );
+        pointer-events: none;
+      }
+
+      @keyframes perspectiveScroll {
+        0% {
+          background-position: 0 0;
+        }
+        100% {
+          background-position: 0 60px;
+        }
+      }
+
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 12px;

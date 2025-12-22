@@ -6,13 +6,16 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-2 sm:p-6 overflow-hidden relative">
-      
-      {/* Background Grid Animation */}
-      <div className="absolute inset-0 retro-grid opacity-30 animate-grid-scroll z-0"></div>
-      
+    <div className="min-h-screen bg-[#050510] flex items-center justify-center p-2 sm:p-6 overflow-hidden relative">
+
+      {/* 3D Perspective Grid Background */}
+      <div className="perspective-container z-0">
+        <div className="perspective-grid"></div>
+        <div className="grid-fade"></div>
+      </div>
+
       {/* Vignette */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#000_100%)] z-0 pointer-events-none"></div>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050510_100%)] z-0 pointer-events-none"></div>
 
       {/* Console Frame */}
       <div className="relative w-full max-w-3xl h-[90vh] bg-arcade-panel/90 backdrop-blur-md rounded-[30px] p-3 sm:p-5 shadow-[0_0_50px_rgba(157,0,255,0.4)] border-4 border-[#ffffff20] ring-4 ring-arcade-purple z-10 flex flex-col">
