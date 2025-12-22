@@ -32,12 +32,12 @@ export interface Task {
   text: string;
   status: TaskStatus;
   createdAt: number;
-  completedAt?: number;
+  completedAt?: number | null;
   user_id?: string | null;
   // New fields for multi-project and kanban support
   projectId: string;
   kanbanColumnId?: string | null;
-  kanbanPosition?: number;
+  kanbanPosition?: number | null;
   backlogPosition?: number | null;
   isInBacklog: boolean;
   dueDate?: number | null;

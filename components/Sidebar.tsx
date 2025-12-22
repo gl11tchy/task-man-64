@@ -267,13 +267,13 @@ export const Sidebar: React.FC = () => {
   const location = useLocation();
 
   const { sidebarCollapsed, toggleSidebar, setSidebarMobileOpen, sidebarMobileOpen } = useUIStore();
-  const { backlogTasks } = useProjectStore();
 
-  // Get backlog count for the current project
-  const state = useProjectStore.getState();
-  const backlogCount = state.tasks.filter(t =>
-    t.projectId === state.currentProjectId && t.isInBacklog
-  ).length;
+  // Get backlog count for the current project using selector pattern
+  const backlogCount = useProjectStore((state) =>
+    state.tasks.filter(t =>
+      t.projectId === state.currentProjectId && t.isInBacklog
+    ).length
+  );
 
   const navItems = [
     { icon: <LayoutDashboard size={20} />, label: 'Workstation', path: '/' },

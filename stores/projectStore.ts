@@ -19,13 +19,6 @@ interface ProjectState {
   projectStorage: ProjectStorage | null;
   taskStorage: TaskStorage | null;
 
-  // Computed
-  currentProject: Project | null;
-  activeTasks: Task[];
-  completedTasks: Task[];
-  backlogTasks: Task[];
-  kanbanTasks: Task[];
-
   // Actions
   setStorageRefs: (projectStorage: ProjectStorage, taskStorage: TaskStorage) => void;
   initialize: () => Promise<void>;
@@ -53,11 +46,40 @@ interface ProjectState {
   moveTaskToBacklog: (taskId: string, position?: number) => Promise<void>;
   promoteFromBacklog: (taskId: string, columnId?: string) => Promise<void>;
   reorderTasks: (tasks: Task[]) => void;
-  reorderBacklogTasks: (tasks: Task[]) => void;
+  reorderBacklogTasks: (tasks: Task[]) => Promise<void>;
+  reorderKanbanTasks: (columnId: string, taskIds: string[]) => Promise<void>;
 
   // Refresh
   refreshTasks: () => Promise<void>;
 }
+
+// Selector functions - use these instead of getters
+export const selectCurrentProject = (state: ProjectState) =>
+  state.projects.find(p => p.id === state.currentProjectId) || null;
+
+export const selectActiveTasks = (state: ProjectState) =>
+  state.tasks.filter(t =>
+    t.projectId === state.currentProjectId &&
+    t.status === 'todo' &&
+    !t.isInBacklog
+  );
+
+export const selectCompletedTasks = (state: ProjectState) =>
+  state.tasks
+    .filter(t => t.projectId === state.currentProjectId && t.status === 'completed')
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+export const selectBacklogTasks = (state: ProjectState) =>
+  state.tasks
+    .filter(t => t.projectId === state.currentProjectId && t.isInBacklog)
+    .sort((a, b) => (a.backlogPosition ?? 0) - (b.backlogPosition ?? 0));
+
+export const selectKanbanTasks = (state: ProjectState) =>
+  state.tasks.filter(t =>
+    t.projectId === state.currentProjectId &&
+    !t.isInBacklog &&
+    t.kanbanColumnId
+  );
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   // Initial state
@@ -69,44 +91,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isInitialized: false,
   projectStorage: null,
   taskStorage: null,
-
-  // Computed getters (these update when state changes)
-  get currentProject() {
-    const state = get();
-    return state.projects.find(p => p.id === state.currentProjectId) || null;
-  },
-
-  get activeTasks() {
-    const state = get();
-    return state.tasks.filter(t =>
-      t.projectId === state.currentProjectId &&
-      t.status === 'todo' &&
-      !t.isInBacklog
-    );
-  },
-
-  get completedTasks() {
-    const state = get();
-    return state.tasks
-      .filter(t => t.projectId === state.currentProjectId && t.status === 'completed')
-      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-  },
-
-  get backlogTasks() {
-    const state = get();
-    return state.tasks
-      .filter(t => t.projectId === state.currentProjectId && t.isInBacklog)
-      .sort((a, b) => (a.backlogPosition ?? 0) - (b.backlogPosition ?? 0));
-  },
-
-  get kanbanTasks() {
-    const state = get();
-    return state.tasks.filter(t =>
-      t.projectId === state.currentProjectId &&
-      !t.isInBacklog &&
-      t.kanbanColumnId
-    );
-  },
 
   // Storage setup
   setStorageRefs: (projectStorage, taskStorage) => {
@@ -121,10 +105,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true });
 
     try {
-      // Load all projects
-      let projects = await projectStorage.loadProjects();
+      // Load all projects - returns { data, error } to distinguish network errors
+      const projectsResult = await projectStorage.loadProjectsWithStatus();
 
-      // If no projects exist, create default
+      // If there was a network error, don't create default projects
+      if (projectsResult.error) {
+        console.error('Failed to load projects:', projectsResult.error);
+        set({ isLoading: false, isInitialized: true });
+        return;
+      }
+
+      let projects = projectsResult.data;
+
+      // Only create default project if we successfully loaded and found no projects
       if (projects.length === 0) {
         const defaultProject = await projectStorage.getOrCreateDefaultProject();
         projects = [defaultProject];
@@ -456,7 +449,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     const updates: Partial<Task> = {
       status: 'todo',
-      completedAt: undefined,
+      completedAt: null,
       kanbanColumnId: todoColumn?.id,
     };
 
@@ -464,22 +457,44 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (result.success) {
       set((state) => ({
         tasks: state.tasks.map(t =>
-          t.id === id ? { ...t, ...updates } : t
+          t.id === id ? { ...t, status: 'todo', completedAt: null, kanbanColumnId: todoColumn?.id } : t
         ),
       }));
     }
   },
 
   moveTaskToColumn: async (taskId, columnId, position, persistImmediately = true) => {
-    const { taskStorage, columns, tasks } = get();
+    const { taskStorage, columns, tasks, currentProjectId } = get();
     if (!taskStorage) return;
 
     const column = columns.find(c => c.id === columnId);
     const existingTask = tasks.find(t => t.id === taskId);
+    const previousColumnId = existingTask?.kanbanColumnId;
+
+    // Get all tasks in the target column (excluding the moved task)
+    const targetColumnTasks = tasks
+      .filter(t =>
+        t.projectId === currentProjectId &&
+        t.kanbanColumnId === columnId &&
+        t.id !== taskId &&
+        !t.isInBacklog
+      )
+      .sort((a, b) => (a.kanbanPosition ?? 0) - (b.kanbanPosition ?? 0));
+
+    // Insert at position and shift others
+    const updatedColumnTasks: { id: string; kanbanPosition: number }[] = [];
+    let insertIndex = Math.min(position, targetColumnTasks.length);
+
+    targetColumnTasks.forEach((t, idx) => {
+      const newPosition = idx >= insertIndex ? idx + 1 : idx;
+      if (t.kanbanPosition !== newPosition) {
+        updatedColumnTasks.push({ id: t.id, kanbanPosition: newPosition });
+      }
+    });
 
     const updates: Partial<Task> = {
       kanbanColumnId: columnId,
-      kanbanPosition: position,
+      kanbanPosition: insertIndex,
       isInBacklog: false,
       backlogPosition: null,
     };
@@ -493,26 +508,36 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } else {
       updates.status = 'todo';
-      updates.completedAt = undefined;
+      updates.completedAt = null;
     }
 
     // Update local state immediately (optimistic update)
     set((state) => ({
-      tasks: state.tasks.map(t =>
-        t.id === taskId ? { ...t, ...updates } : t
-      ),
+      tasks: state.tasks.map(t => {
+        if (t.id === taskId) {
+          return { ...t, ...updates, completedAt: column?.isDoneColumn ? (existingTask?.completedAt || Date.now()) : null };
+        }
+        const posUpdate = updatedColumnTasks.find(u => u.id === t.id);
+        if (posUpdate) {
+          return { ...t, kanbanPosition: posUpdate.kanbanPosition };
+        }
+        return t;
+      }),
     }));
 
     // Persist to storage if requested
     if (persistImmediately) {
       const result = await taskStorage.updateTask(taskId, updates);
       if (!result.success) {
-        // Rollback on failure
-        set((state) => ({
-          tasks: state.tasks.map(t =>
-            t.id === taskId && existingTask ? existingTask : t
-          ),
-        }));
+        // Rollback on failure - reload from storage
+        const freshTasks = await taskStorage.loadTasks();
+        set({ tasks: freshTasks });
+        return;
+      }
+
+      // Persist position updates for other tasks
+      if (updatedColumnTasks.length > 0) {
+        await taskStorage.updateTaskPositions(updatedColumnTasks);
       }
     }
   },
@@ -535,7 +560,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                 ...t,
                 isInBacklog: true,
                 kanbanColumnId: null,
-                kanbanPosition: undefined,
+                kanbanPosition: null,
                 backlogPosition: newPosition,
               }
             : t
@@ -591,7 +616,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   reorderBacklogTasks: async (reorderedTasks) => {
-    const { taskStorage, currentProjectId } = get();
+    const { taskStorage } = get();
 
     // Update backlog positions
     const updatedTasks = reorderedTasks.map((t, index) => ({
@@ -613,6 +638,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const positionUpdates = updatedTasks.map(t => ({
         id: t.id,
         backlogPosition: t.backlogPosition,
+      }));
+      await taskStorage.updateTaskPositions(positionUpdates);
+    }
+  },
+
+  // New: Batch reorder kanban tasks in a column
+  reorderKanbanTasks: async (columnId, taskIds) => {
+    const { taskStorage, currentProjectId } = get();
+
+    // Update positions in state
+    set((state) => ({
+      tasks: state.tasks.map(t => {
+        if (t.projectId === currentProjectId && t.kanbanColumnId === columnId) {
+          const newPosition = taskIds.indexOf(t.id);
+          if (newPosition !== -1 && t.kanbanPosition !== newPosition) {
+            return { ...t, kanbanPosition: newPosition };
+          }
+        }
+        return t;
+      }),
+    }));
+
+    // Persist in batch
+    if (taskStorage) {
+      const positionUpdates = taskIds.map((id, index) => ({
+        id,
+        kanbanPosition: index,
       }));
       await taskStorage.updateTaskPositions(positionUpdates);
     }

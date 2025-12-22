@@ -83,7 +83,7 @@ export class TaskStorage {
     return this.updateTask(taskId, {
       isInBacklog: true,
       kanbanColumnId: null,
-      kanbanPosition: undefined,
+      kanbanPosition: null,
       backlogPosition: position,
     });
   }

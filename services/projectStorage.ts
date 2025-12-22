@@ -27,6 +27,15 @@ export class ProjectStorage {
     }
   }
 
+  // Returns { data, error } to distinguish network errors from empty results
+  async loadProjectsWithStatus(): Promise<{ data: Project[]; error?: Error }> {
+    if (this.userId) {
+      return this.loadProjectsFromSupabaseWithStatus();
+    } else {
+      return { data: this.loadProjectsFromLocalStorage() };
+    }
+  }
+
   async createProject(project: Omit<Project, 'id' | 'createdAt' | 'isArchived' | 'user_id'>): Promise<{ success: boolean; project?: Project; error?: Error }> {
     const newProject: Project = {
       id: uuidv4(),
@@ -265,6 +274,11 @@ export class ProjectStorage {
   // ============ Supabase Implementation ============
 
   private async loadProjectsFromSupabase(): Promise<Project[]> {
+    const result = await this.loadProjectsFromSupabaseWithStatus();
+    return result.data;
+  }
+
+  private async loadProjectsFromSupabaseWithStatus(): Promise<{ data: Project[]; error?: Error }> {
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -274,10 +288,10 @@ export class ProjectStorage {
 
       if (error) {
         console.error('Failed to load projects from Supabase:', error);
-        return [];
+        return { data: [], error: error as Error };
       }
 
-      return (data || []).map(row => ({
+      const projects = (data || []).map(row => ({
         id: row.id,
         name: row.name,
         color: row.color,
@@ -286,9 +300,11 @@ export class ProjectStorage {
         isArchived: row.is_archived,
         user_id: row.user_id,
       }));
+
+      return { data: projects };
     } catch (error) {
       console.error('Failed to load projects from Supabase:', error);
-      return [];
+      return { data: [], error: error as Error };
     }
   }
 
