@@ -191,6 +191,14 @@ export class TaskStorage {
         backlogPosition: task.backlogPosition ?? null,
         priority: task.priority ?? null,
         tags: task.tags ?? [],
+        // AUTOCLAUDE fields
+        prUrl: task.prUrl ?? null,
+        feedback: task.feedback ?? null,
+        claimedAt: task.claimedAt ?? null,
+        claimedBy: task.claimedBy ?? null,
+        autoclaudeEnabled: task.autoclaudeEnabled ?? false,
+        attemptCount: task.attemptCount ?? 0,
+        lastError: task.lastError ?? null,
       }));
     } catch (error) {
       console.error('Failed to load from localStorage:', error);
@@ -258,6 +266,14 @@ export class TaskStorage {
         dueDate: row.due_date ? new Date(row.due_date).getTime() : null,
         priority: row.priority,
         tags: row.tags ?? [],
+        // AUTOCLAUDE fields
+        prUrl: row.pr_url,
+        feedback: row.feedback,
+        claimedAt: row.claimed_at,
+        claimedBy: row.claimed_by,
+        autoclaudeEnabled: row.autoclaude_enabled ?? false,
+        attemptCount: row.attempt_count ?? 0,
+        lastError: row.last_error,
       }));
     } catch (error) {
       console.error('Failed to load from Neon:', error);
@@ -273,7 +289,8 @@ export class TaskStorage {
         INSERT INTO tasks (
           id, text, status, created_at, completed_at, user_id,
           project_id, kanban_column_id, kanban_position, backlog_position,
-          is_in_backlog, due_date, priority, tags
+          is_in_backlog, due_date, priority, tags,
+          pr_url, feedback, claimed_at, claimed_by, autoclaude_enabled, attempt_count, last_error
         ) VALUES (
           ${task.id},
           ${task.text},
@@ -288,7 +305,14 @@ export class TaskStorage {
           ${task.isInBacklog},
           ${task.dueDate ? new Date(task.dueDate).toISOString() : null},
           ${task.priority ?? null},
-          ${task.tags ?? []}
+          ${task.tags ?? []},
+          ${task.prUrl ?? null},
+          ${task.feedback ?? null},
+          ${task.claimedAt ?? null},
+          ${task.claimedBy ?? null},
+          ${task.autoclaudeEnabled ?? false},
+          ${task.attemptCount ?? 0},
+          ${task.lastError ?? null}
         )
       `;
 
@@ -317,7 +341,14 @@ export class TaskStorage {
           is_in_backlog = ${updates.isInBacklog !== undefined ? updates.isInBacklog : sql`is_in_backlog`},
           due_date = ${updates.dueDate !== undefined ? (updates.dueDate ? new Date(updates.dueDate).toISOString() : null) : sql`due_date`},
           priority = ${updates.priority !== undefined ? updates.priority : sql`priority`},
-          tags = ${updates.tags !== undefined ? updates.tags : sql`tags`}
+          tags = ${updates.tags !== undefined ? updates.tags : sql`tags`},
+          pr_url = ${updates.prUrl !== undefined ? updates.prUrl : sql`pr_url`},
+          feedback = ${updates.feedback !== undefined ? updates.feedback : sql`feedback`},
+          claimed_at = ${updates.claimedAt !== undefined ? updates.claimedAt : sql`claimed_at`},
+          claimed_by = ${updates.claimedBy !== undefined ? updates.claimedBy : sql`claimed_by`},
+          autoclaude_enabled = ${updates.autoclaudeEnabled !== undefined ? updates.autoclaudeEnabled : sql`autoclaude_enabled`},
+          attempt_count = ${updates.attemptCount !== undefined ? updates.attemptCount : sql`attempt_count`},
+          last_error = ${updates.lastError !== undefined ? updates.lastError : sql`last_error`}
         WHERE id = ${id} AND user_id = ${this.userId}
       `;
 

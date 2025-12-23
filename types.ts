@@ -16,6 +16,8 @@ export interface Project {
   createdAt: number;
   isArchived: boolean;
   user_id?: string | null;
+  // AUTOCLAUDE: Repository URL for this project
+  repoUrl?: string | null;
 }
 
 export interface KanbanColumn {
@@ -43,6 +45,14 @@ export interface Task {
   dueDate?: number | null;
   priority?: 'low' | 'medium' | 'high' | null;
   tags?: string[];
+  // AUTOCLAUDE fields
+  prUrl?: string | null;
+  feedback?: string | null;
+  claimedAt?: string | null;
+  claimedBy?: string | null;
+  autoclaudeEnabled?: boolean;
+  attemptCount?: number;
+  lastError?: string | null;
 }
 
 export enum AppMode {

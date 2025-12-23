@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu,
@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Columns,
   Plus,
+  Github,
 } from 'lucide-react';
 import { UserMenu } from './UserMenu';
 import { useUIStore } from '../stores/uiStore';
@@ -35,11 +36,19 @@ export const SettingsView: React.FC = () => {
 
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectName, setProjectName] = useState(currentProject?.name || '');
+  const [repoUrl, setRepoUrl] = useState(currentProject?.repoUrl || '');
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [columnName, setColumnName] = useState('');
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newColumnColor, setNewColumnColor] = useState('#718096');
+
+  // Sync state when project changes
+  useEffect(() => {
+    setProjectName(currentProject?.name || '');
+    setRepoUrl(currentProject?.repoUrl || '');
+    setEditingProjectName(false);
+  }, [currentProjectId, currentProject?.name, currentProject?.repoUrl]);
 
   const handleSaveProjectName = async () => {
     if (currentProjectId && projectName.trim()) {
@@ -51,6 +60,12 @@ export const SettingsView: React.FC = () => {
   const handleUpdateProjectColor = async (color: string) => {
     if (currentProjectId) {
       await updateProject(currentProjectId, { color });
+    }
+  };
+
+  const handleUpdateRepoUrl = async (url: string) => {
+    if (currentProjectId) {
+      await updateProject(currentProjectId, { repoUrl: url || null });
     }
   };
 
@@ -190,6 +205,26 @@ export const SettingsView: React.FC = () => {
                   />
                 ))}
               </div>
+            </div>
+
+            {/* Repository URL (for AUTOCLAUDE) */}
+            <div>
+              <label className="text-xs font-pixel text-white/40 mb-2 block flex items-center gap-2">
+                <Github size={12} />
+                Repository URL
+                <span className="text-arcade-cyan/60">(AUTOCLAUDE)</span>
+              </label>
+              <input
+                type="text"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                onBlur={() => handleUpdateRepoUrl(repoUrl)}
+                placeholder="https://github.com/user/repo"
+                className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan"
+              />
+              <p className="text-xs font-pixel text-white/30 mt-1">
+                Link this project to a GitHub repo for AUTOCLAUDE automation
+              </p>
             </div>
 
             {/* Archive Project */}

@@ -296,6 +296,7 @@ export class ProjectStorage {
         createdAt: new Date(row.created_at).getTime(),
         isArchived: row.is_archived,
         user_id: row.user_id,
+        repoUrl: row.repo_url,
       }));
 
       return { data: projects };
@@ -310,7 +311,7 @@ export class ProjectStorage {
 
     try {
       await sql`
-        INSERT INTO projects (id, name, color, description, created_at, is_archived, user_id)
+        INSERT INTO projects (id, name, color, description, created_at, is_archived, user_id, repo_url)
         VALUES (
           ${project.id},
           ${project.name},
@@ -318,7 +319,8 @@ export class ProjectStorage {
           ${project.description ?? null},
           ${new Date(project.createdAt).toISOString()},
           ${project.isArchived},
-          ${this.userId}
+          ${this.userId},
+          ${project.repoUrl ?? null}
         )
       `;
 
@@ -338,7 +340,8 @@ export class ProjectStorage {
           name = COALESCE(${updates.name ?? null}, name),
           color = COALESCE(${updates.color ?? null}, color),
           description = COALESCE(${updates.description ?? null}, description),
-          is_archived = ${updates.isArchived !== undefined ? updates.isArchived : sql`is_archived`}
+          is_archived = ${updates.isArchived !== undefined ? updates.isArchived : sql`is_archived`},
+          repo_url = ${updates.repoUrl !== undefined ? updates.repoUrl : sql`repo_url`}
         WHERE id = ${id} AND user_id = ${this.userId}
       `;
 
