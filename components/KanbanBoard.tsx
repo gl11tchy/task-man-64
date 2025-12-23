@@ -10,6 +10,7 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
+  DragCancelEvent,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -336,6 +337,11 @@ export const KanbanBoard: React.FC = () => {
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [quickAddColumnId, setQuickAddColumnId] = useState<string | null>(null);
+  // Store original task position for rollback if drag is canceled
+  const [originalTaskState, setOriginalTaskState] = useState<{
+    columnId: string | null;
+    position: number;
+  } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -370,6 +376,11 @@ export const KanbanBoard: React.FC = () => {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
+      // Store original position for potential rollback
+      setOriginalTaskState({
+        columnId: task.kanbanColumnId ?? null,
+        position: task.kanbanPosition ?? 0,
+      });
     }
   };
 
@@ -409,13 +420,27 @@ export const KanbanBoard: React.FC = () => {
     const { active, over } = event;
     setActiveTask(null);
 
-    if (!over) return;
+    // If no valid drop target, reset to original position
+    if (!over) {
+      if (originalTaskState && active.id) {
+        const activeId = active.id as string;
+        if (originalTaskState.columnId) {
+          // Reset to original column and position (don't persist, just fix local state)
+          await moveTaskToColumn(activeId, originalTaskState.columnId, originalTaskState.position, true);
+        }
+      }
+      setOriginalTaskState(null);
+      return;
+    }
 
     const activeId = active.id as string;
     const overId = over.id as string;
 
     const activeTask = tasks.find((t) => t.id === activeId);
-    if (!activeTask) return;
+    if (!activeTask) {
+      setOriginalTaskState(null);
+      return;
+    }
 
     const overColumn = columns.find((col) => col.id === overId);
     const overTask = tasks.find((t) => t.id === overId);
@@ -446,6 +471,23 @@ export const KanbanBoard: React.FC = () => {
         await moveTaskToColumn(activeId, targetColumnId, overTask.kanbanPosition ?? 0, true);
       }
     }
+
+    setOriginalTaskState(null);
+  };
+
+  const handleDragCancel = async (event: DragCancelEvent) => {
+    const { active } = event;
+    setActiveTask(null);
+
+    // Reset to original position on cancel
+    if (originalTaskState && active.id) {
+      const activeId = active.id as string;
+      if (originalTaskState.columnId) {
+        await moveTaskToColumn(activeId, originalTaskState.columnId, originalTaskState.position, true);
+      }
+    }
+
+    setOriginalTaskState(null);
   };
 
   const handleAddTask = async (text: string, columnId: string) => {
@@ -476,6 +518,7 @@ export const KanbanBoard: React.FC = () => {
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
         <div className="flex-1 overflow-x-auto p-4">
           <div className="flex gap-4 h-full min-w-max">
