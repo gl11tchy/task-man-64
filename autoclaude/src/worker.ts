@@ -143,7 +143,9 @@ Please address this feedback and make the necessary changes.
   } catch (error) {
     console.error(`[${task.id}] Error:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await db.recordError(task.id, errorMessage);
+    // Use recordFeedbackError to keep task in IN_PROGRESS column
+    // This ensures it's retried as a feedback task, not as a new task
+    await db.recordFeedbackError(task.id, errorMessage);
     // Keep work directory on error for debugging
   }
 }

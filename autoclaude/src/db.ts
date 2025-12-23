@@ -40,6 +40,7 @@ export async function getFeedbackTasks(): Promise<TaskWithRepo[]> {
       AND t.feedback != ''
       AND p.repo_url IS NOT NULL
       AND (t.claimed_at IS NULL OR t.claimed_at < ${claimTimeout})
+      AND (t.attempt_count IS NULL OR t.attempt_count < ${CONFIG.MAX_RETRY_ATTEMPTS})
     ORDER BY t.created_at ASC
   `;
 
@@ -78,7 +79,7 @@ export async function resolveTask(taskId: string, prUrl: string): Promise<void> 
   `;
 }
 
-// Record error and move task back to backlog for retry (if under retry limit)
+// Record error for a new task - move back to backlog for retry
 // Tasks that exceed retry limit stay in backlog but won't be picked up
 export async function recordError(taskId: string, error: string): Promise<void> {
   await sql`
@@ -90,6 +91,20 @@ export async function recordError(taskId: string, error: string): Promise<void> 
         kanban_column_id = ${CONFIG.BACKLOG_COLUMN_ID}
     WHERE id = ${taskId}
   `;
+}
+
+// Record error for a feedback task - keep in IN_PROGRESS so it's retried as feedback
+// The feedback is preserved so the daemon will try again with the same context
+export async function recordFeedbackError(taskId: string, error: string): Promise<void> {
+  await sql`
+    UPDATE tasks
+    SET last_error = ${error},
+        attempt_count = COALESCE(attempt_count, 0) + 1,
+        claimed_at = NULL,
+        claimed_by = NULL
+    WHERE id = ${taskId}
+  `;
+  // Note: kanban_column_id stays as IN_PROGRESS, feedback is preserved
 }
 
 // Clear feedback after addressing it
