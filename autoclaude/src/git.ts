@@ -125,7 +125,7 @@ export interface CommitResult {
   message?: string;
 }
 
-export async function commitAndPush(workDir: string, message: string, branchName: string): Promise<CommitResult> {
+export async function commitAndPush(workDir: string, message: string, branchName: string, forceOnRetry: boolean = false): Promise<CommitResult> {
   // Validate branch name
   if (!/^[\w\-\/]+$/.test(branchName)) {
     throw new Error(`Invalid branch name: ${branchName}`);
@@ -145,7 +145,20 @@ export async function commitAndPush(workDir: string, message: string, branchName
 
   // Use execFile with -m flag to safely pass commit message
   await execFileAsync('git', ['commit', '-m', message], { cwd: workDir });
-  await execFileAsync('git', ['push', '-u', 'origin', branchName], { cwd: workDir });
+
+  // Try regular push first
+  try {
+    await execFileAsync('git', ['push', '-u', 'origin', branchName], { cwd: workDir });
+  } catch (error) {
+    // If push failed and forceOnRetry is enabled, try force push
+    // This handles cases where remote branch has diverged (e.g., retry after partial success)
+    if (forceOnRetry) {
+      console.log('Regular push failed, attempting force push for retry scenario...');
+      await execFileAsync('git', ['push', '-u', '--force-with-lease', 'origin', branchName], { cwd: workDir });
+    } else {
+      throw error;
+    }
+  }
 
   return { committed: true };
 }
