@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { ViewType, AppMode } from '../types';
 
 const SIDEBAR_COLLAPSED_KEY = 'workstation_sidebar_collapsed';
+const SCORE_STORAGE_KEY = 'workstation_score';
 
 interface UIState {
   // Sidebar state
@@ -21,6 +22,9 @@ interface UIState {
   // Quick switcher
   quickSwitcherOpen: boolean;
 
+  // Gamification
+  score: number;
+
   // Actions
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -30,6 +34,7 @@ interface UIState {
   toggleMuted: () => void;
   openQuickSwitcher: () => void;
   closeQuickSwitcher: () => void;
+  addScore: (points: number) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -42,6 +47,7 @@ export const useUIStore = create<UIState>()(
       mode: AppMode.AUTO,
       muted: false,
       quickSwitcherOpen: false,
+      score: 0,
 
       // Actions
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -52,6 +58,7 @@ export const useUIStore = create<UIState>()(
       toggleMuted: () => set((state) => ({ muted: !state.muted })),
       openQuickSwitcher: () => set({ quickSwitcherOpen: true }),
       closeQuickSwitcher: () => set({ quickSwitcherOpen: false }),
+      addScore: (points) => set((state) => ({ score: state.score + points })),
     }),
     {
       name: 'workstation-ui-store',
@@ -59,6 +66,7 @@ export const useUIStore = create<UIState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         muted: state.muted,
         mode: state.mode,
+        score: state.score,
       }),
     }
   )

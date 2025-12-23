@@ -11,10 +11,8 @@ import { useAudio } from '../hooks/useAudio';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 
-const STORAGE_KEY = 'workstation_score';
-
 export const WorkstationView: React.FC = () => {
-  const { mode, setMode, muted, toggleMuted, setSidebarMobileOpen } = useUIStore();
+  const { mode, setMode, muted, toggleMuted, setSidebarMobileOpen, score, addScore } = useUIStore();
   const {
     tasks,
     currentProjectId,
@@ -28,10 +26,6 @@ export const WorkstationView: React.FC = () => {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<'active' | 'completed'>('active');
-  const [score, setScore] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? parseInt(saved, 10) : 0;
-  });
 
   const { playSound } = useAudio(muted);
 
@@ -66,11 +60,7 @@ export const WorkstationView: React.FC = () => {
     if (!taskToCompleteId) return;
 
     await completeTask(taskToCompleteId);
-    setScore(prev => {
-      const newScore = prev + 100;
-      localStorage.setItem(STORAGE_KEY, newScore.toString());
-      return newScore;
-    });
+    addScore(100);
     setSelectedTaskId(null);
     playSound('success');
   };

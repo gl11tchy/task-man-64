@@ -416,15 +416,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   completeTask: async (id) => {
-    const { taskStorage, columns } = get();
+    const { taskStorage, columns, tasks, currentProjectId } = get();
     if (!taskStorage) return;
 
     const doneColumn = columns.find(c => c.isDoneColumn);
     const completedAt = Date.now();
 
+    // Calculate the next position in the Done column
+    const doneColumnTasks = tasks.filter(t =>
+      t.projectId === currentProjectId &&
+      t.kanbanColumnId === doneColumn?.id &&
+      !t.isInBacklog
+    );
+    const nextPosition = doneColumnTasks.length;
+
     const updates: Partial<Task> = {
       status: 'completed',
       completedAt,
+      kanbanPosition: nextPosition,
     };
 
     if (doneColumn) {
@@ -442,22 +451,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   restoreTask: async (id) => {
-    const { taskStorage, columns } = get();
+    const { taskStorage, columns, tasks, currentProjectId } = get();
     if (!taskStorage) return;
 
     const todoColumn = columns.find(c => c.position === 0) || columns[0];
+
+    // Calculate the next position in the Todo column
+    const todoColumnTasks = tasks.filter(t =>
+      t.projectId === currentProjectId &&
+      t.kanbanColumnId === todoColumn?.id &&
+      !t.isInBacklog
+    );
+    const nextPosition = todoColumnTasks.length;
 
     const updates: Partial<Task> = {
       status: 'todo',
       completedAt: null,
       kanbanColumnId: todoColumn?.id,
+      kanbanPosition: nextPosition,
     };
 
     const result = await taskStorage.updateTask(id, updates);
     if (result.success) {
       set((state) => ({
         tasks: state.tasks.map(t =>
-          t.id === id ? { ...t, status: 'todo', completedAt: null, kanbanColumnId: todoColumn?.id } : t
+          t.id === id ? { ...t, ...updates } : t
         ),
       }));
     }

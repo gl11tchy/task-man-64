@@ -23,6 +23,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, GripVertical, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
+import { useUIStore } from '../stores/uiStore';
 import { Task, KanbanColumn } from '../types';
 
 // ============ Task Card Component ============
@@ -333,7 +334,10 @@ export const KanbanBoard: React.FC = () => {
     deleteTask,
     moveTaskToColumn,
     moveTaskToBacklog,
+    reorderKanbanTasks,
   } = useProjectStore();
+
+  const { addScore } = useUIStore();
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [quickAddColumnId, setQuickAddColumnId] = useState<string | null>(null);
@@ -341,6 +345,7 @@ export const KanbanBoard: React.FC = () => {
   const [originalTaskState, setOriginalTaskState] = useState<{
     columnId: string | null;
     position: number;
+    wasCompleted: boolean;
   } | null>(null);
 
   const sensors = useSensors(
@@ -380,6 +385,7 @@ export const KanbanBoard: React.FC = () => {
       setOriginalTaskState({
         columnId: task.kanbanColumnId ?? null,
         position: task.kanbanPosition ?? 0,
+        wasCompleted: task.status === 'completed',
       });
     }
   };
@@ -391,8 +397,8 @@ export const KanbanBoard: React.FC = () => {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    const activeTask = tasks.find((t) => t.id === activeId);
-    if (!activeTask) return;
+    const activeTaskData = tasks.find((t) => t.id === activeId);
+    if (!activeTaskData) return;
 
     // Find which column the item is being dragged over
     const overColumn = columns.find((col) => col.id === overId);
@@ -400,17 +406,32 @@ export const KanbanBoard: React.FC = () => {
 
     if (overColumn) {
       // Dragging over a column directly
-      if (activeTask.kanbanColumnId !== overColumn.id) {
+      if (activeTaskData.kanbanColumnId !== overColumn.id) {
         // Don't persist during drag - only update local state
         moveTaskToColumn(activeId, overColumn.id, 0, false);
       }
     } else if (overTask) {
       // Dragging over another task
-      if (activeTask.kanbanColumnId !== overTask.kanbanColumnId) {
+      if (activeTaskData.kanbanColumnId !== overTask.kanbanColumnId) {
+        // Cross-column move
         const overTaskColumn = overTask.kanbanColumnId;
         if (overTaskColumn) {
           // Don't persist during drag - only update local state
           moveTaskToColumn(activeId, overTaskColumn, overTask.kanbanPosition ?? 0, false);
+        }
+      } else {
+        // Same-column reordering - provide visual feedback
+        const columnId = activeTaskData.kanbanColumnId;
+        if (columnId) {
+          const columnTasks = tasksByColumn[columnId] || [];
+          const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
+          const newIndex = columnTasks.findIndex((t) => t.id === overId);
+
+          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            // Reorder locally for visual feedback
+            const reordered = arrayMove(columnTasks, oldIndex, newIndex);
+            reorderKanbanTasks(columnId, reordered.map(t => t.id));
+          }
         }
       }
     }
@@ -436,8 +457,8 @@ export const KanbanBoard: React.FC = () => {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    const activeTask = tasks.find((t) => t.id === activeId);
-    if (!activeTask) {
+    const activeTaskData = tasks.find((t) => t.id === activeId);
+    if (!activeTaskData) {
       setOriginalTaskState(null);
       return;
     }
@@ -445,31 +466,36 @@ export const KanbanBoard: React.FC = () => {
     const overColumn = columns.find((col) => col.id === overId);
     const overTask = tasks.find((t) => t.id === overId);
 
+    // Determine target column for score calculation
+    let targetColumn: KanbanColumn | undefined;
+
     if (overColumn) {
+      targetColumn = overColumn;
       // Dropped on a column - persist the final position
       await moveTaskToColumn(activeId, overColumn.id, 0, true);
-    } else if (overTask && activeTask.kanbanColumnId === overTask.kanbanColumnId) {
-      // Reordering within the same column
-      const columnTasks = tasksByColumn[activeTask.kanbanColumnId || ''] || [];
-      const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
-      const newIndex = columnTasks.findIndex((t) => t.id === overId);
-
-      if (oldIndex !== -1 && newIndex !== -1) {
-        const reordered = arrayMove(columnTasks, oldIndex, newIndex);
-        // Persist final positions
-        for (let index = 0; index < reordered.length; index++) {
-          const task = reordered[index];
-          if (task.kanbanPosition !== index) {
-            await moveTaskToColumn(task.id, task.kanbanColumnId!, index, true);
-          }
-        }
+    } else if (overTask && activeTaskData.kanbanColumnId === overTask.kanbanColumnId) {
+      // Reordering within the same column - just persist the order
+      const columnId = activeTaskData.kanbanColumnId;
+      if (columnId) {
+        const columnTasks = tasksByColumn[columnId] || [];
+        const reorderedIds = columnTasks.map(t => t.id);
+        // Persist using batch update (already reordered in handleDragOver)
+        await useProjectStore.getState().taskStorage?.updateTaskPositions(
+          reorderedIds.map((id, index) => ({ id, kanbanPosition: index }))
+        );
       }
     } else if (overTask) {
       // Dropped on a task in a different column - persist the move
       const targetColumnId = overTask.kanbanColumnId;
       if (targetColumnId) {
+        targetColumn = columns.find(c => c.id === targetColumnId);
         await moveTaskToColumn(activeId, targetColumnId, overTask.kanbanPosition ?? 0, true);
       }
+    }
+
+    // Award points if task was moved to Done column and wasn't already completed
+    if (targetColumn?.isDoneColumn && originalTaskState && !originalTaskState.wasCompleted) {
+      addScore(100);
     }
 
     setOriginalTaskState(null);
