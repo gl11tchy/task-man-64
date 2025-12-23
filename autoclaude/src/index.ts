@@ -21,7 +21,12 @@ async function poll() {
       console.log(`Found ${feedbackTasks.length} task(s) with feedback to address`);
     }
     for (const task of feedbackTasks) {
-      await processFeedbackTask(task);
+      // Claim before processing to prevent race conditions with other daemons
+      const claimed = await db.claimTask(task.id);
+      if (claimed) {
+        console.log(`Claimed feedback task: ${task.id}`);
+        await processFeedbackTask(task);
+      }
     }
 
     // Then check for new tasks in backlog
