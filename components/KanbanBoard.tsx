@@ -5,12 +5,15 @@ import {
   closestCorners,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
   DragCancelEvent,
+  defaultDropAnimationSideEffects,
+  DropAnimation,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -21,7 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, GripVertical, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare } from 'lucide-react';
+import { Plus, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import { Task, KanbanColumn } from '../types';
@@ -60,8 +63,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
   return (
     <div
       className={`
-        bg-arcade-panel/80 rounded-lg p-3 border-l-4 transition-all relative group
-        ${isDragging ? 'shadow-lg shadow-arcade-pink/30 rotate-2 scale-105' : 'hover:bg-arcade-panel'}
+        bg-arcade-panel/80 rounded-lg p-3 border-l-4 relative group select-none
+        transition-all duration-200 ease-out
+        ${isDragging
+          ? 'shadow-xl shadow-arcade-pink/40 scale-105 rotate-1 ring-2 ring-arcade-pink/50 bg-arcade-panel'
+          : 'hover:bg-arcade-panel hover:shadow-md hover:shadow-arcade-pink/10'}
       `}
       style={{
         borderLeftColor: task.priority ? priorityColors[task.priority] : 'transparent',
@@ -218,23 +224,30 @@ const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onM
     transform,
     transition,
     isDragging,
+    isSorting,
   } = useSortable({ id: task.id });
 
-  const style = {
+  // Smooth transitions for transform and opacity
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1)',
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+    cursor: isDragging ? 'grabbing' : 'grab',
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
-      <div
-        {...attributes}
-        {...listeners}
-        className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 hover:opacity-100 transition-opacity"
-      >
-        <GripVertical size={14} className="text-white/30" />
-      </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`
+        relative touch-none
+        ${isDragging ? 'z-50' : ''}
+        ${isSorting && !isDragging ? 'transition-transform duration-200' : ''}
+      `}
+    >
       <TaskCard
         task={task}
         isDragging={isDragging}
@@ -270,6 +283,7 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
 }) => {
   const {
     setNodeRef,
+    isOver,
   } = useSortable({
     id: column.id,
     data: { type: 'column' },
@@ -280,7 +294,13 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
   return (
     <div
       ref={setNodeRef}
-      className="flex-shrink-0 w-72 bg-black/20 rounded-xl border border-white/5 flex flex-col max-h-full"
+      className={`
+        flex-shrink-0 w-72 rounded-xl border flex flex-col max-h-full
+        transition-all duration-200 ease-out
+        ${isOver
+          ? 'bg-black/30 border-arcade-pink/30 shadow-lg shadow-arcade-pink/10'
+          : 'bg-black/20 border-white/5'}
+      `}
     >
       {/* Column Header */}
       <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
@@ -312,8 +332,16 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
         </SortableContext>
 
         {tasks.length === 0 && (
-          <div className="py-8 text-center">
-            <p className="text-white/30 font-pixel text-xs">No tasks</p>
+          <div className={`
+            py-8 text-center rounded-lg border-2 border-dashed
+            transition-all duration-200
+            ${isOver
+              ? 'border-arcade-pink/40 bg-arcade-pink/5'
+              : 'border-transparent'}
+          `}>
+            <p className={`font-pixel text-xs transition-colors duration-200 ${isOver ? 'text-arcade-pink/60' : 'text-white/30'}`}>
+              {isOver ? 'Drop here' : 'No tasks'}
+            </p>
           </div>
         )}
       </div>
@@ -490,10 +518,29 @@ export const KanbanBoard: React.FC = () => {
     wasCompleted: boolean;
   } | null>(null);
 
+  // Smooth drop animation configuration
+  const dropAnimation: DropAnimation = {
+    sideEffects: defaultDropAnimationSideEffects({
+      styles: {
+        active: {
+          opacity: '0.5',
+        },
+      },
+    }),
+    duration: 250,
+    easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5, // Lower distance for more responsive drag
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150, // Short delay for touch to distinguish from scroll
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -571,7 +618,7 @@ export const KanbanBoard: React.FC = () => {
 
           if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
             // Reorder locally for visual feedback
-            const reordered = arrayMove(columnTasks, oldIndex, newIndex);
+            const reordered = arrayMove(columnTasks, oldIndex, newIndex) as Task[];
             reorderKanbanTasks(columnId, reordered.map(t => t.id));
           }
         }
@@ -746,8 +793,12 @@ export const KanbanBoard: React.FC = () => {
           </div>
         </div>
 
-        <DragOverlay>
-          {activeTask && <TaskCard task={activeTask} isDragging />}
+        <DragOverlay dropAnimation={dropAnimation}>
+          {activeTask && (
+            <div className="cursor-grabbing">
+              <TaskCard task={activeTask} isDragging />
+            </div>
+          )}
         </DragOverlay>
       </DndContext>
 
