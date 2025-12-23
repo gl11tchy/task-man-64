@@ -21,7 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, GripVertical, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, GripVertical, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import { Task, KanbanColumn } from '../types';
@@ -33,9 +33,11 @@ interface TaskCardProps {
   isDragging?: boolean;
   onDelete?: () => void;
   onMoveToBacklog?: () => void;
+  onToggleAutoclaude?: () => void;
+  onAddFeedback?: () => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveToBacklog }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const priorityColors = {
@@ -114,7 +116,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
         {task.dueDate && (
           <span className="flex items-center gap-1 text-xs font-pixel text-white/40">
             <Calendar size={10} />
@@ -132,6 +134,67 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
             {task.priority}
           </span>
         )}
+
+        {/* AUTOCLAUDE toggle */}
+        {onToggleAutoclaude && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAutoclaude();
+            }}
+            className={`p-1 rounded transition-colors ${
+              task.autoclaudeEnabled
+                ? 'text-arcade-cyan bg-arcade-cyan/10'
+                : 'text-white/20 hover:text-white/40 hover:bg-white/5'
+            }`}
+            title={task.autoclaudeEnabled ? 'AUTOCLAUDE enabled' : 'Enable AUTOCLAUDE'}
+          >
+            <Bot size={12} />
+          </button>
+        )}
+
+        {/* PR Link */}
+        {task.prUrl && (
+          <a
+            href={task.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-xs font-pixel text-arcade-cyan hover:text-arcade-cyan/80 transition-colors"
+          >
+            <ExternalLink size={10} />
+            PR
+          </a>
+        )}
+
+        {/* Feedback indicator */}
+        {task.feedback && (
+          <span className="flex items-center gap-1 text-xs font-pixel text-yellow-400/80" title={task.feedback}>
+            <MessageSquare size={10} />
+            Feedback
+          </span>
+        )}
+
+        {/* Add feedback button (only for resolved tasks with PR) */}
+        {task.prUrl && !task.feedback && onAddFeedback && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddFeedback();
+            }}
+            className="opacity-0 group-hover:opacity-100 p-1 text-white/20 hover:text-white/40 transition-all"
+            title="Add feedback"
+          >
+            <MessageSquare size={10} />
+          </button>
+        )}
+
+        {/* Error indicator */}
+        {task.lastError && (
+          <span className="text-xs font-pixel text-red-400/80" title={task.lastError}>
+            Error ({task.attemptCount})
+          </span>
+        )}
       </div>
     </div>
   );
@@ -143,9 +206,11 @@ interface SortableTaskCardProps {
   task: Task;
   onDelete: () => void;
   onMoveToBacklog: () => void;
+  onToggleAutoclaude: () => void;
+  onAddFeedback: () => void;
 }
 
-const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onMoveToBacklog }) => {
+const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback }) => {
   const {
     attributes,
     listeners,
@@ -175,6 +240,8 @@ const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onM
         isDragging={isDragging}
         onDelete={onDelete}
         onMoveToBacklog={onMoveToBacklog}
+        onToggleAutoclaude={onToggleAutoclaude}
+        onAddFeedback={onAddFeedback}
       />
     </div>
   );
@@ -188,6 +255,8 @@ interface KanbanColumnProps {
   onAddTask: (columnId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onMoveToBacklog: (taskId: string) => void;
+  onToggleAutoclaude: (taskId: string) => void;
+  onAddFeedback: (taskId: string) => void;
 }
 
 const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
@@ -196,6 +265,8 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
   onAddTask,
   onDeleteTask,
   onMoveToBacklog,
+  onToggleAutoclaude,
+  onAddFeedback,
 }) => {
   const {
     setNodeRef,
@@ -234,6 +305,8 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
               task={task}
               onDelete={() => onDeleteTask(task.id)}
               onMoveToBacklog={() => onMoveToBacklog(task.id)}
+              onToggleAutoclaude={() => onToggleAutoclaude(task.id)}
+              onAddFeedback={() => onAddFeedback(task.id)}
             />
           ))}
         </SortableContext>
@@ -323,6 +396,73 @@ const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, columnId, onClose
   );
 };
 
+// ============ Feedback Modal ============
+
+interface FeedbackModalProps {
+  isOpen: boolean;
+  taskId: string | null;
+  taskText: string;
+  onClose: () => void;
+  onSubmit: (taskId: string, feedback: string) => void;
+}
+
+const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, taskId, taskText, onClose, onSubmit }) => {
+  const [feedback, setFeedback] = useState('');
+
+  const handleSubmit = () => {
+    if (feedback.trim() && taskId) {
+      onSubmit(taskId, feedback.trim());
+      setFeedback('');
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-arcade-panel border border-white/10 rounded-xl p-4 w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-game text-sm text-yellow-400 mb-2">ADD FEEDBACK</h3>
+        <p className="font-pixel text-xs text-white/60 mb-4 truncate">{taskText}</p>
+        <textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+          }}
+          placeholder="Describe what changes are needed..."
+          className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-3 font-pixel text-white placeholder:text-white/30 focus:outline-none focus:border-yellow-400 min-h-[100px] resize-none"
+          autoFocus
+        />
+        <p className="text-xs font-pixel text-white/30 mt-2 mb-4">
+          This will move the task back to In Progress for AUTOCLAUDE to address.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 font-pixel text-sm text-white/60 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!feedback.trim()}
+            className="px-4 py-2 bg-yellow-400/20 text-yellow-400 font-pixel text-sm rounded-lg hover:bg-yellow-400/30 transition-colors disabled:opacity-50"
+          >
+            Submit Feedback
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // ============ Main Kanban Board ============
 
 export const KanbanBoard: React.FC = () => {
@@ -331,6 +471,7 @@ export const KanbanBoard: React.FC = () => {
     tasks,
     currentProjectId,
     addTask,
+    updateTask,
     deleteTask,
     moveTaskToColumn,
     moveTaskToBacklog,
@@ -341,6 +482,7 @@ export const KanbanBoard: React.FC = () => {
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [quickAddColumnId, setQuickAddColumnId] = useState<string | null>(null);
+  const [feedbackTaskId, setFeedbackTaskId] = useState<string | null>(null);
   // Store original task position for rollback if drag is canceled
   const [originalTaskState, setOriginalTaskState] = useState<{
     columnId: string | null;
@@ -533,6 +675,32 @@ export const KanbanBoard: React.FC = () => {
     await moveTaskToBacklog(taskId);
   };
 
+  const handleToggleAutoclaude = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      await updateTask(taskId, { autoclaudeEnabled: !task.autoclaudeEnabled });
+    }
+  };
+
+  const handleAddFeedback = (taskId: string) => {
+    setFeedbackTaskId(taskId);
+  };
+
+  const handleSubmitFeedback = async (taskId: string, feedback: string) => {
+    // Find the "In Progress" column
+    const inProgressColumn = columns.find(c => c.name.toLowerCase().includes('progress'));
+    if (inProgressColumn) {
+      // Move task back to In Progress with feedback
+      await updateTask(taskId, { feedback });
+      await moveTaskToColumn(taskId, inProgressColumn.id, 0, true);
+    } else {
+      // Just add feedback if no in progress column found
+      await updateTask(taskId, { feedback });
+    }
+  };
+
+  const feedbackTask = feedbackTaskId ? tasks.find(t => t.id === feedbackTaskId) : null;
+
   if (columns.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -563,6 +731,8 @@ export const KanbanBoard: React.FC = () => {
                   onAddTask={setQuickAddColumnId}
                   onDeleteTask={handleDeleteTask}
                   onMoveToBacklog={handleMoveToBacklog}
+                  onToggleAutoclaude={handleToggleAutoclaude}
+                  onAddFeedback={handleAddFeedback}
                 />
               ))}
           </div>
@@ -580,6 +750,18 @@ export const KanbanBoard: React.FC = () => {
             columnId={quickAddColumnId}
             onClose={() => setQuickAddColumnId(null)}
             onAdd={handleAddTask}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {feedbackTaskId && feedbackTask && (
+          <FeedbackModal
+            isOpen={!!feedbackTaskId}
+            taskId={feedbackTaskId}
+            taskText={feedbackTask.text}
+            onClose={() => setFeedbackTaskId(null)}
+            onSubmit={handleSubmitFeedback}
           />
         )}
       </AnimatePresence>
