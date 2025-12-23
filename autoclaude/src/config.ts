@@ -23,4 +23,6 @@ export const CONFIG = {
   MAX_CONCURRENT: parseInt(process.env.MAX_CONCURRENT || '1'),
   // Claim timeout - if a task is claimed but not completed in this time, release it
   CLAIM_TIMEOUT_MS: parseInt(process.env.CLAIM_TIMEOUT_MS || '3600000'), // 1 hour
+  // Max retry attempts before giving up on a task
+  MAX_RETRY_ATTEMPTS: parseInt(process.env.MAX_RETRY_ATTEMPTS || '3'),
 };

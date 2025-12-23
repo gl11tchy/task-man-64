@@ -4,7 +4,7 @@ import { Task, Project, TaskWithRepo } from './types.js';
 
 const sql = neon(CONFIG.DATABASE_URL);
 
-// Get claimable tasks (in backlog, autoclaude enabled, not claimed or claim expired)
+// Get claimable tasks (in backlog, autoclaude enabled, not claimed or claim expired, under retry limit)
 export async function getClaimableTasks(): Promise<TaskWithRepo[]> {
   const claimTimeout = new Date(Date.now() - CONFIG.CLAIM_TIMEOUT_MS).toISOString();
 
@@ -16,6 +16,7 @@ export async function getClaimableTasks(): Promise<TaskWithRepo[]> {
       AND t.autoclaude_enabled = true
       AND p.repo_url IS NOT NULL
       AND (t.claimed_at IS NULL OR t.claimed_at < ${claimTimeout})
+      AND (t.attempt_count IS NULL OR t.attempt_count < ${CONFIG.MAX_RETRY_ATTEMPTS})
     ORDER BY t.created_at ASC
     LIMIT ${CONFIG.MAX_CONCURRENT}
   `;
@@ -77,13 +78,13 @@ export async function resolveTask(taskId: string, prUrl: string): Promise<void> 
   `;
 }
 
-// Record error and move task back to backlog for retry
-// Any daemon can pick it up on the next poll cycle
+// Record error and move task back to backlog for retry (if under retry limit)
+// Tasks that exceed retry limit stay in backlog but won't be picked up
 export async function recordError(taskId: string, error: string): Promise<void> {
   await sql`
     UPDATE tasks
     SET last_error = ${error},
-        attempt_count = attempt_count + 1,
+        attempt_count = COALESCE(attempt_count, 0) + 1,
         claimed_at = NULL,
         claimed_by = NULL,
         kanban_column_id = ${CONFIG.BACKLOG_COLUMN_ID}
