@@ -22,6 +22,11 @@ interface AuthContextType {
 
 const AUTH_STORAGE_KEY = 'workstation_auth';
 
+// Generate a deterministic user ID from email - consistent across signUp and signIn
+const generateUserId = (email: string): string => {
+  return `user_${email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}`;
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -55,7 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
       // Simple local auth - in production, use a proper auth provider
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Use deterministic ID so data persists across signIn/signOut
+      const userId = generateUserId(email);
       const newUser: User = { id: userId, email };
       const newSession: Session = {
         user: newUser,
@@ -75,7 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
       // Simple local auth - in production, use a proper auth provider
-      const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      // Use deterministic ID so data persists across signIn/signOut
+      const userId = generateUserId(email);
       const newUser: User = { id: userId, email };
       const newSession: Session = {
         user: newUser,

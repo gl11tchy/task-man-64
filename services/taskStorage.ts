@@ -106,15 +106,74 @@ export class TaskStorage {
       return { success: true, count: 0 };
     }
 
-    try {
-      for (const task of localTasks) {
-        await this.addToNeon(task);
-      }
+    const migratedIds: string[] = [];
+    let lastError: Error | undefined;
 
-      localStorage.removeItem(TASKS_STORAGE_KEY);
-      return { success: true, count: localTasks.length };
+    // Migrate tasks one by one, tracking successes
+    for (const task of localTasks) {
+      const result = await this.upsertToNeon(task);
+      if (result.success) {
+        migratedIds.push(task.id);
+      } else {
+        lastError = result.error;
+      }
+    }
+
+    // Remove successfully migrated tasks from localStorage
+    if (migratedIds.length > 0) {
+      const remainingTasks = localTasks.filter(t => !migratedIds.includes(t.id));
+      if (remainingTasks.length === 0) {
+        localStorage.removeItem(TASKS_STORAGE_KEY);
+      } else {
+        localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(remainingTasks));
+      }
+    }
+
+    // Return success if all tasks were migrated
+    if (migratedIds.length === localTasks.length) {
+      return { success: true, count: migratedIds.length };
+    }
+
+    return {
+      success: false,
+      count: migratedIds.length,
+      error: lastError || new Error(`Only ${migratedIds.length}/${localTasks.length} tasks migrated`),
+    };
+  }
+
+  // Upsert for idempotent migration - won't fail on duplicates
+  private async upsertToNeon(task: Task): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
+
+    try {
+      await sql`
+        INSERT INTO tasks (
+          id, text, status, created_at, completed_at, user_id,
+          project_id, kanban_column_id, kanban_position, backlog_position,
+          is_in_backlog, due_date, priority, tags
+        ) VALUES (
+          ${task.id},
+          ${task.text},
+          ${task.status},
+          ${new Date(task.createdAt).toISOString()},
+          ${task.completedAt ? new Date(task.completedAt).toISOString() : null},
+          ${this.userId},
+          ${task.projectId},
+          ${task.kanbanColumnId ?? null},
+          ${task.kanbanPosition ?? null},
+          ${task.backlogPosition ?? null},
+          ${task.isInBacklog},
+          ${task.dueDate ? new Date(task.dueDate).toISOString() : null},
+          ${task.priority ?? null},
+          ${task.tags ?? []}
+        )
+        ON CONFLICT (id) DO NOTHING
+      `;
+
+      return { success: true };
     } catch (error) {
-      return { success: false, count: 0, error: error as Error };
+      console.error('Failed to upsert to Neon:', error);
+      return { success: false, error: error as Error };
     }
   }
 
