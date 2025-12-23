@@ -85,9 +85,10 @@ export async function processNewTask(task: TaskWithRepo): Promise<void> {
 
 export async function processFeedbackTask(task: TaskWithRepo): Promise<void> {
   const branchName = `autoclaude/${task.id.slice(0, 8)}`;
+  const isRetry = (task.attempt_count ?? 0) > 0;
 
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`[${task.id}] Processing feedback: ${task.feedback?.slice(0, 50)}...`);
+  console.log(`[${task.id}] Processing feedback${isRetry ? ' (retry)' : ''}: ${task.feedback?.slice(0, 50)}...`);
   console.log(`${'='.repeat(60)}\n`);
 
   try {
@@ -115,9 +116,9 @@ Please address this feedback and make the necessary changes.
       throw new Error(`Claude failed: ${result.error}`);
     }
 
-    // 4. Commit and push (to existing PR)
+    // 4. Commit and push (to existing PR, force on retry to handle diverged branches)
     console.log(`[${task.id}] Pushing feedback fixes...`);
-    const commitResult = await git.commitAndPush(workDir, `autoclaude: address feedback`, branchName);
+    const commitResult = await git.commitAndPush(workDir, `autoclaude: address feedback`, branchName, isRetry);
 
     // 5. Add comment to PR (even if no changes, to acknowledge the feedback)
     if (task.pr_url) {
