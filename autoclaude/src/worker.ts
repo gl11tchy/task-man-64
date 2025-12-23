@@ -30,9 +30,14 @@ export async function processNewTask(task: TaskWithRepo): Promise<void> {
 
     // 4. Commit and push
     console.log(`[${task.id}] Committing and pushing...`);
-    await git.commitAndPush(workDir, `autoclaude: ${task.text.slice(0, 50)}`, branchName);
+    const commitResult = await git.commitAndPush(workDir, `autoclaude: ${task.text.slice(0, 50)}`, branchName);
 
-    // 5. Create PR
+    // 5. Check if changes were made before creating PR
+    if (!commitResult.committed) {
+      throw new Error('Claude made no changes to the codebase. The task may need clarification or already be complete.');
+    }
+
+    // 6. Create PR
     console.log(`[${task.id}] Creating PR...`);
     const prUrl = await github.createPR(
       workDir,
@@ -41,7 +46,7 @@ export async function processNewTask(task: TaskWithRepo): Promise<void> {
       branchName
     );
 
-    // 6. Mark resolved
+    // 7. Mark resolved
     console.log(`[${task.id}] Done! PR: ${prUrl}`);
     await db.resolveTask(task.id, prUrl);
 
@@ -86,16 +91,16 @@ Please address this feedback and make the necessary changes.
 
     // 4. Commit and push (to existing PR)
     console.log(`[${task.id}] Pushing feedback fixes...`);
-    await git.commitAndPush(workDir, `autoclaude: address feedback`, branchName);
+    const commitResult = await git.commitAndPush(workDir, `autoclaude: address feedback`, branchName);
 
-    // 5. Add comment to PR
+    // 5. Add comment to PR (even if no changes, to acknowledge the feedback)
     if (task.pr_url) {
       console.log(`[${task.id}] Adding comment to PR...`);
-      await github.addPRComment(
-        workDir,
-        branchName,
-        `## Feedback Addressed\n\nI've addressed the feedback:\n> ${task.feedback?.replace(/\n/g, '\n> ')}\n\nPlease review the latest changes.`
-      );
+      const commentText = commitResult.committed
+        ? `## Feedback Addressed\n\nI've addressed the feedback:\n> ${task.feedback?.replace(/\n/g, '\n> ')}\n\nPlease review the latest changes.`
+        : `## Feedback Reviewed\n\nI reviewed the feedback:\n> ${task.feedback?.replace(/\n/g, '\n> ')}\n\nNo code changes were needed. The existing implementation already handles this, or the feedback requires clarification.`;
+
+      await github.addPRComment(workDir, branchName, commentText);
     }
 
     // 6. Clear feedback and move back to resolved

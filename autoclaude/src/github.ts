@@ -1,7 +1,7 @@
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export async function createPR(
   workDir: string,
@@ -9,12 +9,15 @@ export async function createPR(
   body: string,
   branchName: string
 ): Promise<string> {
-  // Escape title and body for shell
-  const escapedTitle = title.replace(/"/g, '\\"').replace(/\$/g, '\\$');
-  const escapedBody = body.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+  // Validate branch name
+  if (!/^[\w\-\/]+$/.test(branchName)) {
+    throw new Error(`Invalid branch name: ${branchName}`);
+  }
 
-  const { stdout } = await execAsync(
-    `gh pr create --title "${escapedTitle}" --body "${escapedBody}" --head ${branchName}`,
+  // Use execFile for safe argument passing - no shell interpolation
+  const { stdout } = await execFileAsync(
+    'gh',
+    ['pr', 'create', '--title', title, '--body', body, '--head', branchName],
     { cwd: workDir }
   );
 
@@ -23,9 +26,15 @@ export async function createPR(
 }
 
 export async function getPRUrl(workDir: string, branchName: string): Promise<string | null> {
+  // Validate branch name
+  if (!/^[\w\-\/]+$/.test(branchName)) {
+    throw new Error(`Invalid branch name: ${branchName}`);
+  }
+
   try {
-    const { stdout } = await execAsync(
-      `gh pr view ${branchName} --json url -q .url`,
+    const { stdout } = await execFileAsync(
+      'gh',
+      ['pr', 'view', branchName, '--json', 'url', '-q', '.url'],
       { cwd: workDir }
     );
     return stdout.trim() || null;
@@ -39,10 +48,15 @@ export async function addPRComment(
   branchName: string,
   comment: string
 ): Promise<void> {
-  const escapedComment = comment.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+  // Validate branch name
+  if (!/^[\w\-\/]+$/.test(branchName)) {
+    throw new Error(`Invalid branch name: ${branchName}`);
+  }
 
-  await execAsync(
-    `gh pr comment ${branchName} --body "${escapedComment}"`,
+  // Use execFile for safe argument passing
+  await execFileAsync(
+    'gh',
+    ['pr', 'comment', branchName, '--body', comment],
     { cwd: workDir }
   );
 }

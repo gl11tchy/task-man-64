@@ -687,8 +687,16 @@ export const KanbanBoard: React.FC = () => {
   };
 
   const handleSubmitFeedback = async (taskId: string, feedback: string) => {
-    // Find the "In Progress" column
-    const inProgressColumn = columns.find(c => c.name.toLowerCase().includes('progress'));
+    // Find the "In Progress" column - try multiple strategies for reliability
+    // 1. Try to find by position (second column in default setup)
+    // 2. Fall back to name matching
+    const sortedColumns = [...columns].sort((a, b) => a.position - b.position);
+    const inProgressColumn =
+      sortedColumns.find(c => c.position === 1 && !c.isDoneColumn) ||
+      columns.find(c => c.name.toLowerCase().includes('progress')) ||
+      columns.find(c => c.name.toLowerCase().includes('active')) ||
+      columns.find(c => c.name.toLowerCase().includes('working'));
+
     if (inProgressColumn) {
       // Move task back to In Progress with feedback
       await updateTask(taskId, { feedback });

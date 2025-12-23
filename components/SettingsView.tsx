@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu,
@@ -42,6 +42,13 @@ export const SettingsView: React.FC = () => {
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newColumnColor, setNewColumnColor] = useState('#718096');
+
+  // Sync state when project changes
+  useEffect(() => {
+    setProjectName(currentProject?.name || '');
+    setRepoUrl(currentProject?.repoUrl || '');
+    setEditingProjectName(false);
+  }, [currentProjectId, currentProject?.name, currentProject?.repoUrl]);
 
   const handleSaveProjectName = async () => {
     if (currentProjectId && projectName.trim()) {
