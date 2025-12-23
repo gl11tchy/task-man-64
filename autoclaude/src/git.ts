@@ -96,13 +96,27 @@ export async function checkoutBranch(workDir: string, branchName: string): Promi
     throw new Error(`Invalid branch name: ${branchName}`);
   }
 
-  // Try to checkout, if it fails try to fetch and checkout
+  // Always fetch the latest from remote first
+  try {
+    await execFileAsync('git', ['fetch', 'origin', branchName], { cwd: workDir });
+  } catch {
+    // Branch might not exist on remote yet, that's okay for new branches
+  }
+
+  // Try to checkout the branch
   try {
     await execFileAsync('git', ['checkout', branchName], { cwd: workDir });
   } catch {
-    // Branch might not exist locally, try fetching
-    await execFileAsync('git', ['fetch', 'origin', branchName], { cwd: workDir });
-    await execFileAsync('git', ['checkout', branchName], { cwd: workDir });
+    // Branch might not exist locally, create tracking branch
+    await execFileAsync('git', ['checkout', '-b', branchName, `origin/${branchName}`], { cwd: workDir });
+  }
+
+  // Pull latest changes to sync with remote (handles case where remote has new commits)
+  try {
+    await execFileAsync('git', ['pull', '--rebase', 'origin', branchName], { cwd: workDir });
+  } catch {
+    // Pull might fail if there are conflicts or no remote tracking - that's okay for new branches
+    console.log(`Note: Could not pull latest for ${branchName}, proceeding with local state`);
   }
 }
 
