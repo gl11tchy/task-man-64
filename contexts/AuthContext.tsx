@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../supabase';
-import { User, Session } from '@supabase/supabase-js';
+
+// Simple user type for local auth
+interface User {
+  id: string;
+  email: string;
+}
+
+interface Session {
+  user: User;
+  access_token: string;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +20,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
+const AUTH_STORAGE_KEY = 'workstation_auth';
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -19,49 +30,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      (async () => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      })();
-    });
-
-    return () => subscription.unsubscribe();
+    // Load auth state from localStorage
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (stored) {
+        const authData = JSON.parse(stored);
+        setUser(authData.user);
+        setSession(authData.session);
+      }
+    } catch (error) {
+      console.error('Failed to load auth state:', error);
+    }
+    setLoading(false);
   }, []);
 
-  const signUp = async (email: string, password: string) => {
+  const saveAuthState = (user: User | null, session: Session | null) => {
+    if (user && session) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ user, session }));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  };
+
+  const signUp = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      return { error: error as Error | null };
+      // Simple local auth - in production, use a proper auth provider
+      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newUser: User = { id: userId, email };
+      const newSession: Session = {
+        user: newUser,
+        access_token: `token_${Date.now()}`,
+      };
+
+      setUser(newUser);
+      setSession(newSession);
+      saveAuthState(newUser, newSession);
+
+      return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<{ error: Error | null }> => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      return { error: error as Error | null };
+      // Simple local auth - in production, use a proper auth provider
+      const userId = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const newUser: User = { id: userId, email };
+      const newSession: Session = {
+        user: newUser,
+        access_token: `token_${Date.now()}`,
+      };
+
+      setUser(newUser);
+      setSession(newSession);
+      saveAuthState(newUser, newSession);
+
+      return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+    saveAuthState(null, null);
   };
 
   const value = {

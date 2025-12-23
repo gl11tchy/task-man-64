@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { sql, isDatabaseAvailable } from '../neon';
 import { Project, KanbanColumn, DEFAULT_KANBAN_COLUMNS, PROJECT_COLORS } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,8 +20,8 @@ export class ProjectStorage {
   // ============ Projects ============
 
   async loadProjects(): Promise<Project[]> {
-    if (this.userId) {
-      return this.loadProjectsFromSupabase();
+    if (this.userId && isDatabaseAvailable()) {
+      return this.loadProjectsFromNeon();
     } else {
       return this.loadProjectsFromLocalStorage();
     }
@@ -29,8 +29,8 @@ export class ProjectStorage {
 
   // Returns { data, error } to distinguish network errors from empty results
   async loadProjectsWithStatus(): Promise<{ data: Project[]; error?: Error }> {
-    if (this.userId) {
-      return this.loadProjectsFromSupabaseWithStatus();
+    if (this.userId && isDatabaseAvailable()) {
+      return this.loadProjectsFromNeonWithStatus();
     } else {
       return { data: this.loadProjectsFromLocalStorage() };
     }
@@ -45,24 +45,24 @@ export class ProjectStorage {
       user_id: this.userId,
     };
 
-    if (this.userId) {
-      return this.addProjectToSupabase(newProject);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.addProjectToNeon(newProject);
     } else {
       return this.addProjectToLocalStorage(newProject);
     }
   }
 
   async updateProject(id: string, updates: Partial<Project>): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.updateProjectInSupabase(id, updates);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.updateProjectInNeon(id, updates);
     } else {
       return this.updateProjectInLocalStorage(id, updates);
     }
   }
 
   async deleteProject(id: string): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.deleteProjectFromSupabase(id);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.deleteProjectFromNeon(id);
     } else {
       return this.deleteProjectFromLocalStorage(id);
     }
@@ -95,8 +95,8 @@ export class ProjectStorage {
   // ============ Kanban Columns ============
 
   async loadColumns(projectId: string): Promise<KanbanColumn[]> {
-    if (this.userId) {
-      return this.loadColumnsFromSupabase(projectId);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.loadColumnsFromNeon(projectId);
     } else {
       return this.loadColumnsFromLocalStorage(projectId);
     }
@@ -111,8 +111,8 @@ export class ProjectStorage {
     }));
 
     for (const column of columns) {
-      if (this.userId) {
-        await this.addColumnToSupabase(column);
+      if (this.userId && isDatabaseAvailable()) {
+        await this.addColumnToNeon(column);
       } else {
         await this.addColumnToLocalStorage(column);
       }
@@ -127,24 +127,24 @@ export class ProjectStorage {
       ...column,
     };
 
-    if (this.userId) {
-      return this.addColumnToSupabase(newColumn);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.addColumnToNeon(newColumn);
     } else {
       return this.addColumnToLocalStorage(newColumn);
     }
   }
 
   async updateColumn(id: string, updates: Partial<KanbanColumn>): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.updateColumnInSupabase(id, updates);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.updateColumnInNeon(id, updates);
     } else {
       return this.updateColumnInLocalStorage(id, updates);
     }
   }
 
   async deleteColumn(id: string): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.deleteColumnFromSupabase(id);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.deleteColumnFromNeon(id);
     } else {
       return this.deleteColumnFromLocalStorage(id);
     }
@@ -271,27 +271,24 @@ export class ProjectStorage {
     }
   }
 
-  // ============ Supabase Implementation ============
+  // ============ Neon Implementation ============
 
-  private async loadProjectsFromSupabase(): Promise<Project[]> {
-    const result = await this.loadProjectsFromSupabaseWithStatus();
+  private async loadProjectsFromNeon(): Promise<Project[]> {
+    const result = await this.loadProjectsFromNeonWithStatus();
     return result.data;
   }
 
-  private async loadProjectsFromSupabaseWithStatus(): Promise<{ data: Project[]; error?: Error }> {
+  private async loadProjectsFromNeonWithStatus(): Promise<{ data: Project[]; error?: Error }> {
+    if (!sql) return { data: [] };
+
     try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', this.userId)
-        .order('created_at', { ascending: false });
+      const rows = await sql`
+        SELECT * FROM projects
+        WHERE user_id = ${this.userId}
+        ORDER BY created_at DESC
+      `;
 
-      if (error) {
-        console.error('Failed to load projects from Supabase:', error);
-        return { data: [], error: error as Error };
-      }
-
-      const projects = (data || []).map(row => ({
+      const projects = rows.map(row => ({
         id: row.id,
         name: row.name,
         color: row.color,
@@ -303,92 +300,82 @@ export class ProjectStorage {
 
       return { data: projects };
     } catch (error) {
-      console.error('Failed to load projects from Supabase:', error);
+      console.error('Failed to load projects from Neon:', error);
       return { data: [], error: error as Error };
     }
   }
 
-  private async addProjectToSupabase(project: Project): Promise<{ success: boolean; project?: Project; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .insert([{
-          id: project.id,
-          name: project.name,
-          color: project.color,
-          description: project.description,
-          created_at: new Date(project.createdAt).toISOString(),
-          is_archived: project.isArchived,
-          user_id: this.userId,
-        }]);
+  private async addProjectToNeon(project: Project): Promise<{ success: boolean; project?: Project; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        INSERT INTO projects (id, name, color, description, created_at, is_archived, user_id)
+        VALUES (
+          ${project.id},
+          ${project.name},
+          ${project.color},
+          ${project.description ?? null},
+          ${new Date(project.createdAt).toISOString()},
+          ${project.isArchived},
+          ${this.userId}
+        )
+      `;
 
       return { success: true, project };
     } catch (error) {
+      console.error('Failed to add project to Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async updateProjectInSupabase(id: string, updates: Partial<Project>): Promise<{ success: boolean; error?: Error }> {
+  private async updateProjectInNeon(id: string, updates: Partial<Project>): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
+
     try {
-      const dbUpdates: Record<string, unknown> = {};
-
-      if (updates.name !== undefined) dbUpdates.name = updates.name;
-      if (updates.color !== undefined) dbUpdates.color = updates.color;
-      if (updates.description !== undefined) dbUpdates.description = updates.description;
-      if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
-
-      const { error } = await supabase
-        .from('projects')
-        .update(dbUpdates)
-        .eq('id', id)
-        .eq('user_id', this.userId);
-
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+      await sql`
+        UPDATE projects SET
+          name = COALESCE(${updates.name ?? null}, name),
+          color = COALESCE(${updates.color ?? null}, color),
+          description = COALESCE(${updates.description ?? null}, description),
+          is_archived = ${updates.isArchived !== undefined ? updates.isArchived : sql`is_archived`}
+        WHERE id = ${id} AND user_id = ${this.userId}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to update project in Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async deleteProjectFromSupabase(id: string): Promise<{ success: boolean; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', this.userId);
+  private async deleteProjectFromNeon(id: string): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        DELETE FROM projects
+        WHERE id = ${id} AND user_id = ${this.userId}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to delete project from Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async loadColumnsFromSupabase(projectId: string): Promise<KanbanColumn[]> {
+  private async loadColumnsFromNeon(projectId: string): Promise<KanbanColumn[]> {
+    if (!sql) return [];
+
     try {
-      const { data, error } = await supabase
-        .from('kanban_columns')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('position', { ascending: true });
+      const rows = await sql`
+        SELECT * FROM kanban_columns
+        WHERE project_id = ${projectId}
+        ORDER BY position ASC
+      `;
 
-      if (error) {
-        console.error('Failed to load columns from Supabase:', error);
-        return [];
-      }
-
-      return (data || []).map(row => ({
+      return rows.map(row => ({
         id: row.id,
         projectId: row.project_id,
         name: row.name,
@@ -397,71 +384,66 @@ export class ProjectStorage {
         isDoneColumn: row.is_done_column,
       }));
     } catch (error) {
-      console.error('Failed to load columns from Supabase:', error);
+      console.error('Failed to load columns from Neon:', error);
       return [];
     }
   }
 
-  private async addColumnToSupabase(column: KanbanColumn): Promise<{ success: boolean; column?: KanbanColumn; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('kanban_columns')
-        .insert([{
-          id: column.id,
-          project_id: column.projectId,
-          name: column.name,
-          color: column.color,
-          position: column.position,
-          is_done_column: column.isDoneColumn,
-        }]);
+  private async addColumnToNeon(column: KanbanColumn): Promise<{ success: boolean; column?: KanbanColumn; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        INSERT INTO kanban_columns (id, project_id, name, color, position, is_done_column)
+        VALUES (
+          ${column.id},
+          ${column.projectId},
+          ${column.name},
+          ${column.color},
+          ${column.position},
+          ${column.isDoneColumn}
+        )
+      `;
 
       return { success: true, column };
     } catch (error) {
+      console.error('Failed to add column to Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async updateColumnInSupabase(id: string, updates: Partial<KanbanColumn>): Promise<{ success: boolean; error?: Error }> {
+  private async updateColumnInNeon(id: string, updates: Partial<KanbanColumn>): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
+
     try {
-      const dbUpdates: Record<string, unknown> = {};
-
-      if (updates.name !== undefined) dbUpdates.name = updates.name;
-      if (updates.color !== undefined) dbUpdates.color = updates.color;
-      if (updates.position !== undefined) dbUpdates.position = updates.position;
-      if (updates.isDoneColumn !== undefined) dbUpdates.is_done_column = updates.isDoneColumn;
-
-      const { error } = await supabase
-        .from('kanban_columns')
-        .update(dbUpdates)
-        .eq('id', id);
-
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+      await sql`
+        UPDATE kanban_columns SET
+          name = COALESCE(${updates.name ?? null}, name),
+          color = COALESCE(${updates.color ?? null}, color),
+          position = ${updates.position !== undefined ? updates.position : sql`position`},
+          is_done_column = ${updates.isDoneColumn !== undefined ? updates.isDoneColumn : sql`is_done_column`}
+        WHERE id = ${id}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to update column in Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async deleteColumnFromSupabase(id: string): Promise<{ success: boolean; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('kanban_columns')
-        .delete()
-        .eq('id', id);
+  private async deleteColumnFromNeon(id: string): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        DELETE FROM kanban_columns
+        WHERE id = ${id}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to delete column from Neon:', error);
       return { success: false, error: error as Error };
     }
   }

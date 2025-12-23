@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { sql, isDatabaseAvailable } from '../neon';
 import { Task } from '../types';
 
 const TASKS_STORAGE_KEY = 'workstation_tasks';
@@ -15,8 +15,8 @@ export class TaskStorage {
   }
 
   async loadTasks(): Promise<Task[]> {
-    if (this.userId) {
-      return this.loadFromSupabase();
+    if (this.userId && isDatabaseAvailable()) {
+      return this.loadFromNeon();
     } else {
       return this.loadFromLocalStorage();
     }
@@ -40,16 +40,16 @@ export class TaskStorage {
   }
 
   async addTask(task: Task): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.addToSupabase(task);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.addToNeon(task);
     } else {
       return this.addToLocalStorage(task);
     }
   }
 
   async updateTask(id: string, updates: Partial<Task>): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.updateInSupabase(id, updates);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.updateInNeon(id, updates);
     } else {
       return this.updateInLocalStorage(id, updates);
     }
@@ -89,16 +89,16 @@ export class TaskStorage {
   }
 
   async deleteTask(id: string): Promise<{ success: boolean; error?: Error }> {
-    if (this.userId) {
-      return this.deleteFromSupabase(id);
+    if (this.userId && isDatabaseAvailable()) {
+      return this.deleteFromNeon(id);
     } else {
       return this.deleteFromLocalStorage(id);
     }
   }
 
   async migrateLocalToCloud(): Promise<{ success: boolean; count: number; error?: Error }> {
-    if (!this.userId) {
-      return { success: false, count: 0, error: new Error('No user logged in') };
+    if (!this.userId || !isDatabaseAvailable()) {
+      return { success: false, count: 0, error: new Error('No user logged in or database not available') };
     }
 
     const localTasks = this.loadFromLocalStorage();
@@ -106,33 +106,16 @@ export class TaskStorage {
       return { success: true, count: 0 };
     }
 
-    const tasksForDb = localTasks.map(task => ({
-      id: task.id,
-      text: task.text,
-      status: task.status,
-      created_at: new Date(task.createdAt).toISOString(),
-      completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
-      user_id: this.userId,
-      project_id: task.projectId,
-      kanban_column_id: task.kanbanColumnId,
-      kanban_position: task.kanbanPosition,
-      backlog_position: task.backlogPosition,
-      is_in_backlog: task.isInBacklog,
-      due_date: task.dueDate ? new Date(task.dueDate).toISOString() : null,
-      priority: task.priority,
-      tags: task.tags,
-    }));
+    try {
+      for (const task of localTasks) {
+        await this.addToNeon(task);
+      }
 
-    const { error } = await supabase
-      .from('tasks')
-      .insert(tasksForDb);
-
-    if (error) {
+      localStorage.removeItem(TASKS_STORAGE_KEY);
+      return { success: true, count: localTasks.length };
+    } catch (error) {
       return { success: false, count: 0, error: error as Error };
     }
-
-    localStorage.removeItem(TASKS_STORAGE_KEY);
-    return { success: true, count: localTasks.length };
   }
 
   private loadFromLocalStorage(): Task[] {
@@ -191,20 +174,17 @@ export class TaskStorage {
     }
   }
 
-  private async loadFromSupabase(): Promise<Task[]> {
+  private async loadFromNeon(): Promise<Task[]> {
+    if (!sql) return [];
+
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', this.userId)
-        .order('created_at', { ascending: false });
+      const rows = await sql`
+        SELECT * FROM tasks
+        WHERE user_id = ${this.userId}
+        ORDER BY created_at DESC
+      `;
 
-      if (error) {
-        console.error('Failed to load from Supabase:', error);
-        return [];
-      }
-
-      return (data || []).map(row => ({
+      return rows.map(row => ({
         id: row.id,
         text: row.text,
         status: row.status,
@@ -221,92 +201,86 @@ export class TaskStorage {
         tags: row.tags ?? [],
       }));
     } catch (error) {
-      console.error('Failed to load from Supabase:', error);
+      console.error('Failed to load from Neon:', error);
       return [];
     }
   }
 
-  private async addToSupabase(task: Task): Promise<{ success: boolean; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .insert([{
-          id: task.id,
-          text: task.text,
-          status: task.status,
-          created_at: new Date(task.createdAt).toISOString(),
-          completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
-          user_id: this.userId,
-          project_id: task.projectId,
-          kanban_column_id: task.kanbanColumnId,
-          kanban_position: task.kanbanPosition,
-          backlog_position: task.backlogPosition,
-          is_in_backlog: task.isInBacklog,
-          due_date: task.dueDate ? new Date(task.dueDate).toISOString() : null,
-          priority: task.priority,
-          tags: task.tags,
-        }]);
+  private async addToNeon(task: Task): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        INSERT INTO tasks (
+          id, text, status, created_at, completed_at, user_id,
+          project_id, kanban_column_id, kanban_position, backlog_position,
+          is_in_backlog, due_date, priority, tags
+        ) VALUES (
+          ${task.id},
+          ${task.text},
+          ${task.status},
+          ${new Date(task.createdAt).toISOString()},
+          ${task.completedAt ? new Date(task.completedAt).toISOString() : null},
+          ${this.userId},
+          ${task.projectId},
+          ${task.kanbanColumnId ?? null},
+          ${task.kanbanPosition ?? null},
+          ${task.backlogPosition ?? null},
+          ${task.isInBacklog},
+          ${task.dueDate ? new Date(task.dueDate).toISOString() : null},
+          ${task.priority ?? null},
+          ${task.tags ?? []}
+        )
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to add to Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async updateInSupabase(id: string, updates: Partial<Task>): Promise<{ success: boolean; error?: Error }> {
+  private async updateInNeon(id: string, updates: Partial<Task>): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
+
     try {
-      const dbUpdates: Record<string, unknown> = {};
-
-      if (updates.text !== undefined) dbUpdates.text = updates.text;
-      if (updates.status !== undefined) dbUpdates.status = updates.status;
-      if (updates.completedAt !== undefined) {
-        dbUpdates.completed_at = updates.completedAt ? new Date(updates.completedAt).toISOString() : null;
-      }
-      if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
-      if (updates.kanbanColumnId !== undefined) dbUpdates.kanban_column_id = updates.kanbanColumnId;
-      if (updates.kanbanPosition !== undefined) dbUpdates.kanban_position = updates.kanbanPosition;
-      if (updates.backlogPosition !== undefined) dbUpdates.backlog_position = updates.backlogPosition;
-      if (updates.isInBacklog !== undefined) dbUpdates.is_in_backlog = updates.isInBacklog;
-      if (updates.dueDate !== undefined) {
-        dbUpdates.due_date = updates.dueDate ? new Date(updates.dueDate).toISOString() : null;
-      }
-      if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
-      if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
-
-      const { error } = await supabase
-        .from('tasks')
-        .update(dbUpdates)
-        .eq('id', id)
-        .eq('user_id', this.userId);
-
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+      // Build dynamic update - Neon's tagged template doesn't support dynamic column names easily
+      // So we update all fields that might change
+      await sql`
+        UPDATE tasks SET
+          text = COALESCE(${updates.text ?? null}, text),
+          status = COALESCE(${updates.status ?? null}, status),
+          completed_at = ${updates.completedAt !== undefined ? (updates.completedAt ? new Date(updates.completedAt).toISOString() : null) : sql`completed_at`},
+          project_id = COALESCE(${updates.projectId ?? null}, project_id),
+          kanban_column_id = ${updates.kanbanColumnId !== undefined ? updates.kanbanColumnId : sql`kanban_column_id`},
+          kanban_position = ${updates.kanbanPosition !== undefined ? updates.kanbanPosition : sql`kanban_position`},
+          backlog_position = ${updates.backlogPosition !== undefined ? updates.backlogPosition : sql`backlog_position`},
+          is_in_backlog = ${updates.isInBacklog !== undefined ? updates.isInBacklog : sql`is_in_backlog`},
+          due_date = ${updates.dueDate !== undefined ? (updates.dueDate ? new Date(updates.dueDate).toISOString() : null) : sql`due_date`},
+          priority = ${updates.priority !== undefined ? updates.priority : sql`priority`},
+          tags = ${updates.tags !== undefined ? updates.tags : sql`tags`}
+        WHERE id = ${id} AND user_id = ${this.userId}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to update in Neon:', error);
       return { success: false, error: error as Error };
     }
   }
 
-  private async deleteFromSupabase(id: string): Promise<{ success: boolean; error?: Error }> {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', this.userId);
+  private async deleteFromNeon(id: string): Promise<{ success: boolean; error?: Error }> {
+    if (!sql) return { success: false, error: new Error('Database not available') };
 
-      if (error) {
-        return { success: false, error: error as Error };
-      }
+    try {
+      await sql`
+        DELETE FROM tasks
+        WHERE id = ${id} AND user_id = ${this.userId}
+      `;
 
       return { success: true };
     } catch (error) {
+      console.error('Failed to delete from Neon:', error);
       return { success: false, error: error as Error };
     }
   }
