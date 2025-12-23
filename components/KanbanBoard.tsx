@@ -466,6 +466,11 @@ export const KanbanBoard: React.FC = () => {
     const overColumn = columns.find((col) => col.id === overId);
     const overTask = tasks.find((t) => t.id === overId);
 
+    // Use original column to detect actual cross-column moves
+    // (local state may have been updated during handleDragOver)
+    const originalColumnId = originalTaskState?.columnId;
+    const isSameColumnReorder = overTask && originalColumnId === overTask.kanbanColumnId;
+
     // Determine target column for score calculation
     let targetColumn: KanbanColumn | undefined;
 
@@ -473,9 +478,9 @@ export const KanbanBoard: React.FC = () => {
       targetColumn = overColumn;
       // Dropped on a column - persist the final position
       await moveTaskToColumn(activeId, overColumn.id, 0, true);
-    } else if (overTask && activeTaskData.kanbanColumnId === overTask.kanbanColumnId) {
+    } else if (overTask && isSameColumnReorder) {
       // Reordering within the same column - just persist the order
-      const columnId = activeTaskData.kanbanColumnId;
+      const columnId = overTask.kanbanColumnId;
       if (columnId) {
         const columnTasks = tasksByColumn[columnId] || [];
         const reorderedIds = columnTasks.map(t => t.id);
