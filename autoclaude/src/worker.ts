@@ -129,9 +129,8 @@ Please address this feedback and make the necessary changes.
       await github.addPRComment(workDir, branchName, commentText);
     }
 
-    // 6. Clear feedback and move back to resolved
+    // 6. Move back to resolved (resolveTask already clears feedback)
     console.log(`[${task.id}] Feedback addressed!`);
-    await db.clearFeedback(task.id);
     await db.resolveTask(task.id, task.pr_url!);
 
     // 7. Cleanup work directory on success
