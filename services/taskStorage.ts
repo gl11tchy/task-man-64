@@ -22,6 +22,23 @@ export class TaskStorage {
     }
   }
 
+  async loadTasksByProject(projectId: string): Promise<Task[]> {
+    const allTasks = await this.loadTasks();
+    return allTasks.filter(t => t.projectId === projectId);
+  }
+
+  async loadBacklogTasks(projectId: string): Promise<Task[]> {
+    const tasks = await this.loadTasksByProject(projectId);
+    return tasks
+      .filter(t => t.isInBacklog)
+      .sort((a, b) => (a.backlogPosition ?? 0) - (b.backlogPosition ?? 0));
+  }
+
+  async loadKanbanTasks(projectId: string): Promise<Task[]> {
+    const tasks = await this.loadTasksByProject(projectId);
+    return tasks.filter(t => !t.isInBacklog && t.kanbanColumnId);
+  }
+
   async addTask(task: Task): Promise<{ success: boolean; error?: Error }> {
     if (this.userId) {
       return this.addToSupabase(task);
@@ -36,6 +53,39 @@ export class TaskStorage {
     } else {
       return this.updateInLocalStorage(id, updates);
     }
+  }
+
+  async updateTaskPositions(tasks: { id: string; kanbanPosition?: number; backlogPosition?: number | null }[]): Promise<{ success: boolean; error?: Error }> {
+    for (const task of tasks) {
+      const updates: Partial<Task> = {};
+      if (task.kanbanPosition !== undefined) updates.kanbanPosition = task.kanbanPosition;
+      if (task.backlogPosition !== undefined) updates.backlogPosition = task.backlogPosition;
+
+      const result = await this.updateTask(task.id, updates);
+      if (!result.success) {
+        return result;
+      }
+    }
+    return { success: true };
+  }
+
+  async promoteToBoard(taskId: string, columnId: string, position: number): Promise<{ success: boolean; error?: Error }> {
+    return this.updateTask(taskId, {
+      isInBacklog: false,
+      kanbanColumnId: columnId,
+      kanbanPosition: position,
+      backlogPosition: null,
+      status: 'todo',
+    });
+  }
+
+  async moveToBacklog(taskId: string, position: number): Promise<{ success: boolean; error?: Error }> {
+    return this.updateTask(taskId, {
+      isInBacklog: true,
+      kanbanColumnId: null,
+      kanbanPosition: null,
+      backlogPosition: position,
+    });
   }
 
   async deleteTask(id: string): Promise<{ success: boolean; error?: Error }> {
@@ -63,6 +113,14 @@ export class TaskStorage {
       created_at: new Date(task.createdAt).toISOString(),
       completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
       user_id: this.userId,
+      project_id: task.projectId,
+      kanban_column_id: task.kanbanColumnId,
+      kanban_position: task.kanbanPosition,
+      backlog_position: task.backlogPosition,
+      is_in_backlog: task.isInBacklog,
+      due_date: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+      priority: task.priority,
+      tags: task.tags,
     }));
 
     const { error } = await supabase
@@ -80,7 +138,18 @@ export class TaskStorage {
   private loadFromLocalStorage(): Task[] {
     try {
       const stored = localStorage.getItem(TASKS_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      const tasks: Task[] = stored ? JSON.parse(stored) : [];
+      // Ensure backward compatibility - add default values for new fields
+      return tasks.map(task => ({
+        ...task,
+        projectId: task.projectId || 'default',
+        isInBacklog: task.isInBacklog ?? false,
+        kanbanColumnId: task.kanbanColumnId ?? null,
+        kanbanPosition: task.kanbanPosition ?? 0,
+        backlogPosition: task.backlogPosition ?? null,
+        priority: task.priority ?? null,
+        tags: task.tags ?? [],
+      }));
     } catch (error) {
       console.error('Failed to load from localStorage:', error);
       return [];
@@ -142,6 +211,14 @@ export class TaskStorage {
         createdAt: new Date(row.created_at).getTime(),
         completedAt: row.completed_at ? new Date(row.completed_at).getTime() : undefined,
         user_id: row.user_id,
+        projectId: row.project_id || 'default',
+        kanbanColumnId: row.kanban_column_id,
+        kanbanPosition: row.kanban_position ?? 0,
+        backlogPosition: row.backlog_position,
+        isInBacklog: row.is_in_backlog ?? false,
+        dueDate: row.due_date ? new Date(row.due_date).getTime() : null,
+        priority: row.priority,
+        tags: row.tags ?? [],
       }));
     } catch (error) {
       console.error('Failed to load from Supabase:', error);
@@ -160,6 +237,14 @@ export class TaskStorage {
           created_at: new Date(task.createdAt).toISOString(),
           completed_at: task.completedAt ? new Date(task.completedAt).toISOString() : null,
           user_id: this.userId,
+          project_id: task.projectId,
+          kanban_column_id: task.kanbanColumnId,
+          kanban_position: task.kanbanPosition,
+          backlog_position: task.backlogPosition,
+          is_in_backlog: task.isInBacklog,
+          due_date: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+          priority: task.priority,
+          tags: task.tags,
         }]);
 
       if (error) {
@@ -174,13 +259,23 @@ export class TaskStorage {
 
   private async updateInSupabase(id: string, updates: Partial<Task>): Promise<{ success: boolean; error?: Error }> {
     try {
-      const dbUpdates: Record<string, any> = {};
+      const dbUpdates: Record<string, unknown> = {};
 
       if (updates.text !== undefined) dbUpdates.text = updates.text;
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.completedAt !== undefined) {
         dbUpdates.completed_at = updates.completedAt ? new Date(updates.completedAt).toISOString() : null;
       }
+      if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
+      if (updates.kanbanColumnId !== undefined) dbUpdates.kanban_column_id = updates.kanbanColumnId;
+      if (updates.kanbanPosition !== undefined) dbUpdates.kanban_position = updates.kanbanPosition;
+      if (updates.backlogPosition !== undefined) dbUpdates.backlog_position = updates.backlogPosition;
+      if (updates.isInBacklog !== undefined) dbUpdates.is_in_backlog = updates.isInBacklog;
+      if (updates.dueDate !== undefined) {
+        dbUpdates.due_date = updates.dueDate ? new Date(updates.dueDate).toISOString() : null;
+      }
+      if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+      if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
 
       const { error } = await supabase
         .from('tasks')
