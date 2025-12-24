@@ -278,7 +278,7 @@ export const Sidebar: React.FC = () => {
   const navItems = [
     { icon: <LayoutDashboard size={20} />, label: 'Workstation', path: '/' },
     { icon: <Kanban size={20} />, label: 'Kanban', path: '/kanban' },
-    { icon: <ListTodo size={20} />, label: 'Backlog', path: '/backlog', badge: backlogCount },
+    { icon: <ListTodo size={20} />, label: 'AUTOCLAUDE', path: '/backlog', badge: backlogCount },
   ];
 
   const handleNavigate = (path: string) => {

@@ -177,7 +177,7 @@ const QuickCapture: React.FC<QuickCaptureProps> = ({ onAdd }) => {
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Add to backlog... (Press Enter)"
+          placeholder="Add to autoclaude... (Press Enter)"
           className="flex-1 bg-transparent font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none"
         />
         {text.trim() && (
@@ -359,9 +359,9 @@ export const BacklogView: React.FC = () => {
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
         <div>
-          <h2 className="font-game text-sm text-arcade-cyan">BACKLOG</h2>
+          <h2 className="font-game text-sm text-arcade-cyan">AUTOCLAUDE</h2>
           <p className="text-xs font-pixel text-white/40 mt-1">
-            {backlogTasks.length} item{backlogTasks.length !== 1 ? 's' : ''} waiting
+            {backlogTasks.length} item{backlogTasks.length !== 1 ? 's' : ''} configured
           </p>
         </div>
 
@@ -408,9 +408,9 @@ export const BacklogView: React.FC = () => {
                 <p className="text-white/40 font-pixel text-sm">No results found</p>
               ) : (
                 <>
-                  <p className="text-white/40 font-pixel text-sm mb-2">Your backlog is empty</p>
+                  <p className="text-white/40 font-pixel text-sm mb-2">Your autoclaude is empty</p>
                   <p className="text-white/30 font-pixel text-xs">
-                    Add tasks above to capture ideas for later
+                    Add configuration items above
                   </p>
                 </>
               )}

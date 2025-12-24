@@ -21,9 +21,9 @@ export const BacklogViewWrapper: React.FC = () => {
           </button>
 
           <div>
-            <h1 className="font-game text-sm text-arcade-cyan">BACKLOG</h1>
+            <h1 className="font-game text-sm text-arcade-cyan">AUTOCLAUDE</h1>
             <p className="text-xs font-pixel text-white/40 mt-0.5">
-              Capture and prioritize future work
+              Configure autoclaude and enter keys
             </p>
           </div>
         </div>
