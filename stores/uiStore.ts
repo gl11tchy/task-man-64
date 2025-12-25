@@ -22,6 +22,9 @@ interface UIState {
   // Quick switcher
   quickSwitcherOpen: boolean;
 
+  // Whiteboard fullscreen
+  whiteboardFullscreen: boolean;
+
   // Gamification
   score: number;
 
@@ -34,6 +37,8 @@ interface UIState {
   toggleMuted: () => void;
   openQuickSwitcher: () => void;
   closeQuickSwitcher: () => void;
+  toggleWhiteboardFullscreen: () => void;
+  setWhiteboardFullscreen: (fullscreen: boolean) => void;
   addScore: (points: number) => void;
 }
 
@@ -47,6 +52,7 @@ export const useUIStore = create<UIState>()(
       mode: AppMode.AUTO,
       muted: false,
       quickSwitcherOpen: false,
+      whiteboardFullscreen: false,
       score: 0,
 
       // Actions
@@ -58,6 +64,8 @@ export const useUIStore = create<UIState>()(
       toggleMuted: () => set((state) => ({ muted: !state.muted })),
       openQuickSwitcher: () => set({ quickSwitcherOpen: true }),
       closeQuickSwitcher: () => set({ quickSwitcherOpen: false }),
+      toggleWhiteboardFullscreen: () => set((state) => ({ whiteboardFullscreen: !state.whiteboardFullscreen })),
+      setWhiteboardFullscreen: (fullscreen) => set({ whiteboardFullscreen: fullscreen }),
       addScore: (points) => set((state) => ({ score: state.score + points })),
     }),
     {

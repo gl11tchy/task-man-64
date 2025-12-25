@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Menu, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Menu, Volume2, VolumeX, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Portal } from './Portal';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
@@ -36,7 +37,7 @@ const isValidExcalidrawData = (elements: unknown): elements is ExcalidrawElement
 };
 
 export const WhiteboardView: React.FC = () => {
-  const { muted, toggleMuted, setSidebarMobileOpen } = useUIStore();
+  const { muted, toggleMuted, setSidebarMobileOpen, whiteboardFullscreen, setWhiteboardFullscreen } = useUIStore();
   const { currentProjectId, projects } = useProjectStore();
   const { user } = useAuth();
 
@@ -175,6 +176,20 @@ export const WhiteboardView: React.FC = () => {
     };
   }, [saveWhiteboard]);
 
+  // Escape key to exit fullscreen
+  useEffect(() => {
+    if (!whiteboardFullscreen) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setWhiteboardFullscreen(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [whiteboardFullscreen, setWhiteboardFullscreen]);
+
     // Handle no project selected
   if (!currentProjectId) {
     return (
@@ -189,17 +204,19 @@ export const WhiteboardView: React.FC = () => {
     );
   }
 
-  return (
+  const content = (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-4 bg-black/20 border-b border-white/5 backdrop-blur-sm shrink-0 z-10">
+      <div className={`flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 backdrop-blur-sm shrink-0 z-10 ${whiteboardFullscreen ? 'bg-[#121212]' : 'bg-black/20'}`}>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setSidebarMobileOpen(true)}
-            className="md:hidden p-2 -ml-2 text-white/60 hover:text-white"
-          >
-            <Menu size={20} />
-          </button>
+          {!whiteboardFullscreen && (
+            <button
+              onClick={() => setSidebarMobileOpen(true)}
+              className="md:hidden p-2 -ml-2 text-white/60 hover:text-white"
+            >
+              <Menu size={20} />
+            </button>
+          )}
 
           <div>
             <h1 className="font-game text-sm text-arcade-pink">WHITEBOARD</h1>
@@ -219,13 +236,21 @@ export const WhiteboardView: React.FC = () => {
           )}
 
           <button
+            onClick={() => setWhiteboardFullscreen(!whiteboardFullscreen)}
+            className="text-white/30 hover:text-white transition-colors"
+            title={whiteboardFullscreen ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
+          >
+            {whiteboardFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
+
+          <button
             onClick={toggleMuted}
             className="text-white/30 hover:text-white transition-colors"
           >
             {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
 
-          <UserMenu />
+          {!whiteboardFullscreen && <UserMenu />}
         </div>
       </div>
 
@@ -265,4 +290,16 @@ export const WhiteboardView: React.FC = () => {
       `}</style>
     </>
   );
+
+  if (whiteboardFullscreen) {
+    return (
+      <Portal>
+        <div className="fixed inset-0 z-50 bg-[#121212] flex flex-col">
+          {content}
+        </div>
+      </Portal>
+    );
+  }
+
+  return content;
 };
