@@ -1,14 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Menu, Volume2, VolumeX, Loader2 } from 'lucide-react';
-import {
-  Tldraw,
-  getSnapshot,
-  loadSnapshot,
-  useEditor,
-  TLStoreWithStatus,
-  createTLStore,
-} from 'tldraw';
-import 'tldraw/tldraw.css';
+import { Excalidraw } from '@excalidraw/excalidraw';
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
+import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { UserMenu } from './UserMenu';
 import { useUIStore } from '../stores/uiStore';
 import { useProjectStore } from '../stores/projectStore';
@@ -18,60 +12,26 @@ import { useAuth } from '../contexts/AuthContext';
 // Auto-save interval in milliseconds
 const AUTOSAVE_INTERVAL = 5000;
 
-// Inner component that has access to editor context
-const WhiteboardAutoSave: React.FC<{
-  projectId: string;
-  storage: WhiteboardStorage;
-  onSaveStatusChange: (saving: boolean) => void;
-}> = ({ projectId, storage, onSaveStatusChange }) => {
-  const editor = useEditor();
-  const pendingSaveRef = useRef<boolean>(false);
-  const lastSnapshotRef = useRef<string>('');
-
-  const saveWhiteboard = useCallback(async () => {
-    if (!editor || pendingSaveRef.current) return;
-
-    try {
-      const snapshot = getSnapshot(editor.store);
-      const snapshotString = JSON.stringify(snapshot);
-
-      // Skip if nothing changed
-      if (snapshotString === lastSnapshotRef.current) return;
-
-      pendingSaveRef.current = true;
-      onSaveStatusChange(true);
-
-      await storage.saveWhiteboard(projectId, {
-        document: snapshot.document,
-        session: snapshot.session,
-      });
-
-      lastSnapshotRef.current = snapshotString;
-    } catch (error) {
-      console.error('Failed to save whiteboard:', error);
-    } finally {
-      pendingSaveRef.current = false;
-      onSaveStatusChange(false);
-    }
-  }, [editor, projectId, storage, onSaveStatusChange]);
-
-  // Auto-save on interval
-  useEffect(() => {
-    const interval = setInterval(() => {
-      saveWhiteboard();
-    }, AUTOSAVE_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [saveWhiteboard]);
-
-  // Save on unmount
-  useEffect(() => {
-    return () => {
-      saveWhiteboard();
-    };
-  }, [saveWhiteboard]);
-
-  return null;
+// Helper to check if data is valid Excalidraw format (not legacy tldraw)
+const isValidExcalidrawData = (elements: unknown): elements is ExcalidrawElement[] => {
+  if (!Array.isArray(elements)) return false;
+  if (elements.length === 0) return true; // Empty is valid
+  
+  // Check first element has Excalidraw-specific properties
+  const first = elements[0];
+  if (typeof first !== 'object' || first === null) return false;
+  
+  // Excalidraw elements have these required fields
+  const hasExcalidrawFields = 
+    'type' in first && 
+    'x' in first && 
+    'y' in first && 
+    'id' in first;
+  
+  // tldraw elements have different structure (typeName, props, etc.)
+  const hasTldrawFields = 'typeName' in first || 'props' in first;
+  
+  return hasExcalidrawFields && !hasTldrawFields;
 };
 
 export const WhiteboardView: React.FC = () => {
@@ -79,11 +39,17 @@ export const WhiteboardView: React.FC = () => {
   const { currentProjectId, projects } = useProjectStore();
   const { user } = useAuth();
 
-  const [storeWithStatus, setStoreWithStatus] = useState<TLStoreWithStatus>({
-    status: 'loading',
-  });
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [initialData, setInitialData] = useState<{
+    elements: ExcalidrawElement[];
+    appState: Partial<AppState>;
+  } | null>(null);
+  
+  const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const storageRef = useRef<WhiteboardStorage>(new WhiteboardStorage(user?.id || null));
+  const lastSavedRef = useRef<string>('');
+  const pendingSaveRef = useRef<boolean>(false);
 
   const currentProject = projects.find(p => p.id === currentProjectId);
 
@@ -95,46 +61,61 @@ export const WhiteboardView: React.FC = () => {
   // Load whiteboard data when project changes
   useEffect(() => {
     if (!currentProjectId) {
-      setStoreWithStatus({ status: 'not-found' });
+      setIsLoading(false);
       return;
     }
 
     let cancelled = false;
 
     async function loadWhiteboardData() {
-      setStoreWithStatus({ status: 'loading' });
+      setIsLoading(true);
 
       try {
         const data = await storageRef.current.loadWhiteboard(currentProjectId!);
         if (cancelled) return;
 
-        const newStore = createTLStore();
-
-        if (data && data.documentSnapshot && Object.keys(data.documentSnapshot).length > 0) {
-          // Load existing snapshot
-          try {
-            loadSnapshot(newStore, {
-              document: data.documentSnapshot as any,
-              session: data.sessionSnapshot as any,
+        if (data && data.documentSnapshot) {
+          const rawElements = data.documentSnapshot.elements || [];
+          const appState = data.sessionSnapshot || {};
+          
+          // Validate data format - tldraw data is incompatible with Excalidraw
+          if (isValidExcalidrawData(rawElements)) {
+            setInitialData({
+              elements: rawElements,
+              appState: {
+                ...appState,
+                theme: 'dark',
+              },
             });
-          } catch (e) {
-            console.warn('Failed to load snapshot, starting fresh:', e);
+          } else {
+            // Legacy tldraw data detected - cannot migrate, start fresh
+            console.warn(
+              '[Whiteboard] Legacy tldraw data detected. Starting with fresh canvas. ' +
+              'Previous whiteboard data is incompatible with the new Excalidraw format.'
+            );
+            setInitialData({
+              elements: [],
+              appState: { theme: 'dark' },
+            });
           }
+        } else {
+          setInitialData({
+            elements: [],
+            appState: { theme: 'dark' },
+          });
         }
-
-        setStoreWithStatus({
-          store: newStore,
-          status: 'synced-remote',
-        });
       } catch (error) {
         console.error('Failed to load whiteboard:', error);
         if (cancelled) return;
-
-        // Create empty store on error
-        setStoreWithStatus({
-          store: createTLStore(),
-          status: 'synced-local',
+        
+        setInitialData({
+          elements: [],
+          appState: { theme: 'dark' },
         });
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -145,7 +126,55 @@ export const WhiteboardView: React.FC = () => {
     };
   }, [currentProjectId]);
 
-  // Handle no project selected
+  // Save function
+  const saveWhiteboard = useCallback(async () => {
+    if (!excalidrawRef.current || !currentProjectId || pendingSaveRef.current) return;
+
+    const elements = excalidrawRef.current.getSceneElements();
+    const appState = excalidrawRef.current.getAppState();
+    
+    const dataString = JSON.stringify({ elements, appState });
+    
+    // Skip if nothing changed
+    if (dataString === lastSavedRef.current) return;
+
+    try {
+      pendingSaveRef.current = true;
+      setIsSaving(true);
+
+      await storageRef.current.saveWhiteboard(currentProjectId, {
+        document: { elements },
+        session: { 
+          viewBackgroundColor: appState.viewBackgroundColor,
+          zoom: appState.zoom,
+          scrollX: appState.scrollX,
+          scrollY: appState.scrollY,
+        },
+      });
+
+      lastSavedRef.current = dataString;
+    } catch (error) {
+      console.error('Failed to save whiteboard:', error);
+    } finally {
+      pendingSaveRef.current = false;
+      setIsSaving(false);
+    }
+  }, [currentProjectId]);
+
+  // Auto-save on interval
+  useEffect(() => {
+    const interval = setInterval(saveWhiteboard, AUTOSAVE_INTERVAL);
+    return () => clearInterval(interval);
+  }, [saveWhiteboard]);
+
+  // Save on unmount
+  useEffect(() => {
+    return () => {
+      saveWhiteboard();
+    };
+  }, [saveWhiteboard]);
+
+    // Handle no project selected
   if (!currentProjectId) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -201,7 +230,7 @@ export const WhiteboardView: React.FC = () => {
 
       {/* Whiteboard Canvas */}
       <div className="flex-1 relative whiteboard-container">
-        {storeWithStatus.status === 'loading' ? (
+        {isLoading ? (
           <div className="flex-1 flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-8 h-8 border-2 border-arcade-pink border-t-transparent rounded-full animate-spin mx-auto mb-4" />
@@ -209,21 +238,30 @@ export const WhiteboardView: React.FC = () => {
             </div>
           </div>
         ) : (
-          <Tldraw
-            store={storeWithStatus}
-            onMount={(editor) => {
-              // Set dark mode to match app theme
-              editor.user.updateUserPreferences({ colorScheme: 'dark' });
+          <Excalidraw
+            excalidrawAPI={(api) => {
+              excalidrawRef.current = api;
             }}
-          >
-            <WhiteboardAutoSave
-              projectId={currentProjectId}
-              storage={storageRef.current}
-              onSaveStatusChange={setIsSaving}
-            />
-          </Tldraw>
+            initialData={initialData || undefined}
+            theme="dark"
+            UIOptions={{
+              canvasActions: {
+                loadScene: false,
+                export: { saveFileToDisk: true },
+              },
+            }}
+          />
         )}
       </div>
+
+      <style>{`
+        .whiteboard-container .excalidraw {
+          height: 100%;
+        }
+        .whiteboard-container .excalidraw .App-menu_top {
+          z-index: 10;
+        }
+      `}</style>
     </>
   );
 };

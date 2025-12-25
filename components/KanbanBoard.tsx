@@ -895,7 +895,7 @@ export const KanbanBoard: React.FC = () => {
 
   const feedbackTask = feedbackTaskId ? tasks.find(t => t.id === feedbackTaskId) : null;
 
-  if (columns.length === 0) {
+    if (columns.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <p className="text-white/40 font-pixel">Loading board...</p>

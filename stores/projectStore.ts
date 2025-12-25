@@ -165,7 +165,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectStorage.setCurrentProjectId(currentProjectId);
       }
 
-      set({
+            set({
         projects,
         currentProjectId,
         columns,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, Suspense } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { WorkstationView } from './components/WorkstationView';
@@ -6,9 +6,7 @@ import { KanbanView } from './components/KanbanView';
 import { BacklogViewWrapper } from './components/BacklogViewWrapper';
 import { SettingsView } from './components/SettingsView';
 
-// Lazy load WhiteboardView to isolate tldraw in its own chunk
-// This prevents initialization order issues with tldraw's circular dependencies
-const WhiteboardView = React.lazy(() => import('./components/WhiteboardView').then(m => ({ default: m.WhiteboardView })));
+import { WhiteboardView } from './components/WhiteboardView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { useAuth } from './contexts/AuthContext';
 import { useProjectStore } from './stores/projectStore';
@@ -100,7 +98,7 @@ export default function App() {
     }
   }, [location.pathname, setCurrentView]);
 
-  if (!isInitialized) {
+    if (!isInitialized) {
     return (
       <Layout showSidebar={false}>
         <div className="flex-1 flex items-center justify-center">
@@ -120,18 +118,7 @@ export default function App() {
           <Route path="/" element={<WorkstationView />} />
           <Route path="/kanban" element={<KanbanView />} />
           <Route path="/backlog" element={<BacklogViewWrapper />} />
-          <Route path="/whiteboard" element={
-            <Suspense fallback={
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-8 h-8 border-2 border-arcade-pink border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="font-pixel text-white/40">Loading whiteboard...</p>
-                </div>
-              </div>
-            }>
-              <WhiteboardView />
-            </Suspense>
-          } />
+          <Route path="/whiteboard" element={<WhiteboardView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Routes>
       </Layout>
