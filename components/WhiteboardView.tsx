@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Menu, Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { Excalidraw } from '@excalidraw/excalidraw';
+import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/types/element/types';
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types/types';
 import { UserMenu } from './UserMenu';
