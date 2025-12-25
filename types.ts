@@ -55,12 +55,14 @@ export interface Task {
   lastError?: string | null;
 }
 
-export enum AppMode {
-  AUTO = 'AUTO',
-  MANUAL = 'MANUAL',
-}
+export const AppMode = {
+  AUTO: 'AUTO',
+  MANUAL: 'MANUAL',
+} as const;
 
-export type ViewType = 'workstation' | 'kanban' | 'backlog';
+export type AppMode = typeof AppMode[keyof typeof AppMode];
+
+export type ViewType = 'workstation' | 'kanban' | 'backlog' | 'whiteboard';
 
 export type SoundType = 'click' | 'success' | 'delete' | 'switch' | 'tab';
 
