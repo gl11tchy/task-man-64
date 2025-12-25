@@ -600,6 +600,23 @@ export const KanbanBoard: React.FC = () => {
     easing: 'cubic-bezier(0.32, 0.72, 0, 1)', // Apple's ease-out curve
   };
 
+  // Group tasks by column - must be defined before announcements that use it
+  const tasksByColumn = useMemo(() => {
+    const grouped: Record<string, Task[]> = {};
+
+    columns.forEach((col) => {
+      grouped[col.id] = tasks
+        .filter((t) =>
+          t.projectId === currentProjectId &&
+          t.kanbanColumnId === col.id &&
+          !t.isInBacklog
+        )
+        .sort((a, b) => (a.kanbanPosition ?? 0) - (b.kanbanPosition ?? 0));
+    });
+
+    return grouped;
+  }, [columns, tasks, currentProjectId]);
+
   // Accessibility announcements for screen readers
   const announcements = useMemo(() => ({
     onDragStart({ active }: { active: { id: string | number } }) {
@@ -659,23 +676,6 @@ export const KanbanBoard: React.FC = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  // Group tasks by column
-  const tasksByColumn = useMemo(() => {
-    const grouped: Record<string, Task[]> = {};
-
-    columns.forEach((col) => {
-      grouped[col.id] = tasks
-        .filter((t) =>
-          t.projectId === currentProjectId &&
-          t.kanbanColumnId === col.id &&
-          !t.isInBacklog
-        )
-        .sort((a, b) => (a.kanbanPosition ?? 0) - (b.kanbanPosition ?? 0));
-    });
-
-    return grouped;
-  }, [columns, tasks, currentProjectId]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
