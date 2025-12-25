@@ -12,6 +12,7 @@ import {
   FolderOpen,
   X,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore';
 import { useProjectStore } from '../stores/projectStore';
@@ -278,6 +279,7 @@ export const Sidebar: React.FC = () => {
   const navItems = [
     { icon: <LayoutDashboard size={20} />, label: 'Workstation', path: '/' },
     { icon: <Kanban size={20} />, label: 'Kanban', path: '/kanban' },
+    { icon: <Pencil size={20} />, label: 'Whiteboard', path: '/whiteboard' },
     { icon: <ListTodo size={20} />, label: 'AUTOCLAUDE', path: '/backlog', badge: backlogCount },
   ];
 

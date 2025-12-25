@@ -5,6 +5,7 @@ import { WorkstationView } from './components/WorkstationView';
 import { KanbanView } from './components/KanbanView';
 import { BacklogViewWrapper } from './components/BacklogViewWrapper';
 import { SettingsView } from './components/SettingsView';
+import { WhiteboardView } from './components/WhiteboardView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { useAuth } from './contexts/AuthContext';
 import { useProjectStore } from './stores/projectStore';
@@ -46,8 +47,8 @@ export default function App() {
         return;
       }
 
-      // Cmd/Ctrl + 1/2/3 - View switching
-      if ((e.metaKey || e.ctrlKey) && ['1', '2', '3'].includes(e.key)) {
+      // Cmd/Ctrl + 1/2/3/4 - View switching
+      if ((e.metaKey || e.ctrlKey) && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         switch (e.key) {
           case '1':
@@ -61,6 +62,10 @@ export default function App() {
           case '3':
             navigate('/backlog');
             setCurrentView('backlog');
+            break;
+          case '4':
+            navigate('/whiteboard');
+            setCurrentView('whiteboard');
             break;
         }
         return;
@@ -87,6 +92,8 @@ export default function App() {
       setCurrentView('kanban');
     } else if (path === '/backlog') {
       setCurrentView('backlog');
+    } else if (path === '/whiteboard') {
+      setCurrentView('whiteboard');
     }
   }, [location.pathname, setCurrentView]);
 
@@ -110,6 +117,7 @@ export default function App() {
           <Route path="/" element={<WorkstationView />} />
           <Route path="/kanban" element={<KanbanView />} />
           <Route path="/backlog" element={<BacklogViewWrapper />} />
+          <Route path="/whiteboard" element={<WhiteboardView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Routes>
       </Layout>
