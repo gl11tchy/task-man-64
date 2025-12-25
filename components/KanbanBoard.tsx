@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -23,11 +23,44 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Plus, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import { Task, KanbanColumn } from '../types';
+
+// ============ Spring Physics Constants ============
+
+const SPRING_CONFIGS = {
+  // Snappy interactions (drag feedback)
+  snappy: {
+    type: 'spring' as const,
+    stiffness: 500,
+    damping: 30,
+    mass: 0.5,
+  },
+  // Smooth, natural movement (layout animations)
+  smooth: {
+    type: 'spring' as const,
+    stiffness: 300,
+    damping: 25,
+    mass: 0.8,
+  },
+  // Bouncy, playful (hover effects)
+  bouncy: {
+    type: 'spring' as const,
+    stiffness: 400,
+    damping: 15,
+    mass: 0.5,
+  },
+  // Gentle settle (drop animation)
+  settle: {
+    type: 'spring' as const,
+    stiffness: 200,
+    damping: 20,
+    mass: 1,
+  },
+};
 
 // ============ Task Card Component ============
 
@@ -61,13 +94,19 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
   };
 
   return (
-    <div
+    <motion.div
+      whileHover={!isDragging ? { 
+        scale: 1.02,
+        boxShadow: '0 4px 12px rgba(255, 0, 255, 0.15)',
+      } : undefined}
+      whileTap={!isDragging ? { scale: 0.98 } : undefined}
+      transition={SPRING_CONFIGS.snappy}
       className={`
         bg-arcade-panel/80 rounded-lg p-3 border-l-4 relative group select-none
-        transition-all duration-200 ease-out
+        transition-colors duration-200 ease-out
         ${isDragging
-          ? 'shadow-xl shadow-arcade-pink/40 scale-105 rotate-1 ring-2 ring-arcade-pink/50 bg-arcade-panel'
-          : 'hover:bg-arcade-panel hover:shadow-md hover:shadow-arcade-pink/10'}
+          ? 'shadow-2xl shadow-arcade-pink/50 ring-2 ring-arcade-pink/60 bg-arcade-panel'
+          : 'hover:bg-arcade-panel'}
       `}
       style={{
         borderLeftColor: task.priority ? priorityColors[task.priority] : 'transparent',
@@ -202,7 +241,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
           </span>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -225,27 +264,39 @@ const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onM
     transition,
     isDragging,
     isSorting,
-  } = useSortable({ id: task.id });
+  } = useSortable({
+    id: task.id,
+    transition: {
+      duration: 200,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    },
+  });
 
-  // Smooth transitions for transform and opacity
+  // Combine dnd-kit transform with Framer Motion
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1)',
-    opacity: isDragging ? 0.4 : 1,
+    transition: transition || undefined,
+    // Fully hide during drag - DragOverlay shows the visual
+    opacity: isDragging ? 0 : 1,
     zIndex: isDragging ? 50 : 'auto',
-    cursor: isDragging ? 'grabbing' : 'grab',
   };
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
+      layout // Enable Framer Motion layout animations
+      layoutId={task.id} // For cross-column animations
+      initial={false}
+      animate={{
+        scale: isSorting && !isDragging ? 0.98 : 1,
+      }}
+      transition={SPRING_CONFIGS.smooth}
       className={`
-        relative touch-none
-        ${isDragging ? 'z-50' : ''}
-        ${isSorting && !isDragging ? 'transition-transform duration-200' : ''}
+        relative touch-none cursor-grab active:cursor-grabbing
+        ${isDragging ? 'z-50 pointer-events-none' : ''}
       `}
     >
       <TaskCard
@@ -256,7 +307,7 @@ const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onM
         onToggleAutoclaude={onToggleAutoclaude}
         onAddFeedback={onAddFeedback}
       />
-    </div>
+    </motion.div>
   );
 };
 
@@ -292,14 +343,19 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
   const taskIds = useMemo(() => tasks.map(t => t.id), [tasks]);
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
+      animate={{
+        scale: isOver ? 1.02 : 1,
+        backgroundColor: isOver ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.2)',
+      }}
+      transition={SPRING_CONFIGS.snappy}
       className={`
         flex-shrink-0 w-72 rounded-xl border flex flex-col max-h-full
-        transition-all duration-200 ease-out
+        transition-colors duration-200 ease-out
         ${isOver
-          ? 'bg-black/30 border-arcade-pink/30 shadow-lg shadow-arcade-pink/10'
-          : 'bg-black/20 border-white/5'}
+          ? 'border-arcade-pink/40 shadow-xl shadow-arcade-pink/20 ring-2 ring-arcade-pink/20'
+          : 'border-white/5'}
       `}
     >
       {/* Column Header */}
@@ -332,17 +388,26 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
         </SortableContext>
 
         {tasks.length === 0 && (
-          <div className={`
-            py-8 text-center rounded-lg border-2 border-dashed
-            transition-all duration-200
-            ${isOver
-              ? 'border-arcade-pink/40 bg-arcade-pink/5'
-              : 'border-transparent'}
-          `}>
-            <p className={`font-pixel text-xs transition-colors duration-200 ${isOver ? 'text-arcade-pink/60' : 'text-white/30'}`}>
-              {isOver ? 'Drop here' : 'No tasks'}
-            </p>
-          </div>
+          <motion.div
+            animate={{
+              scale: isOver ? 1.02 : 1,
+              borderColor: isOver ? 'rgba(255, 0, 255, 0.5)' : 'rgba(255, 255, 255, 0.1)',
+              backgroundColor: isOver ? 'rgba(255, 0, 255, 0.08)' : 'transparent',
+            }}
+            transition={SPRING_CONFIGS.snappy}
+            className="py-8 text-center rounded-lg border-2 border-dashed"
+          >
+            <motion.p
+              animate={{ 
+                color: isOver ? 'rgba(255, 0, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)',
+                scale: isOver ? 1.1 : 1,
+              }}
+              transition={SPRING_CONFIGS.snappy}
+              className="font-pixel text-xs"
+            >
+              {isOver ? '✨ Drop here' : 'No tasks'}
+            </motion.p>
+          </motion.div>
         )}
       </div>
 
@@ -356,7 +421,7 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
           <span className="font-pixel text-xs">Add Task</span>
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -518,29 +583,76 @@ export const KanbanBoard: React.FC = () => {
     wasCompleted: boolean;
   } | null>(null);
 
-  // Smooth drop animation configuration
+  // Debounce tracking for handleDragOver
+  const dragOverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastOverIdRef = useRef<string | null>(null);
+
+  // Premium drop animation with Apple-style easing
   const dropAnimation: DropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
       styles: {
         active: {
-          opacity: '0.5',
+          opacity: '0.4',
         },
       },
     }),
-    duration: 250,
-    easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    duration: 300,
+    easing: 'cubic-bezier(0.32, 0.72, 0, 1)', // Apple's ease-out curve
   };
+
+  // Accessibility announcements for screen readers
+  const announcements = useMemo(() => ({
+    onDragStart({ active }: { active: { id: string | number } }) {
+      const task = tasks.find(t => t.id === active.id);
+      const column = columns.find(c => c.id === task?.kanbanColumnId);
+      const columnTasks = tasksByColumn[column?.id || ''] || [];
+      const position = columnTasks.findIndex(t => t.id === active.id) + 1;
+      const total = columnTasks.length;
+      return `Picked up task "${task?.text}". Currently in ${column?.name || 'unknown'} column, position ${position} of ${total}.`;
+    },
+    onDragOver({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      if (!over) {
+        return `Task is no longer over a drop target.`;
+      }
+      const overColumn = columns.find(c => c.id === over.id);
+      const overTask = tasks.find(t => t.id === over.id);
+      if (overColumn) {
+        return `Over ${overColumn.name} column. Release to drop here.`;
+      }
+      if (overTask) {
+        const column = columns.find(c => c.id === overTask.kanbanColumnId);
+        const columnTasks = tasksByColumn[column?.id || ''] || [];
+        const position = columnTasks.findIndex(t => t.id === over.id) + 1;
+        return `Over position ${position} in ${column?.name || 'unknown'} column.`;
+      }
+      return '';
+    },
+    onDragEnd({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      const task = tasks.find(t => t.id === active.id);
+      if (!over) {
+        return `Task "${task?.text}" was dropped. Drag cancelled.`;
+      }
+      const overColumn = columns.find(c => c.id === over.id);
+      const overTask = tasks.find(t => t.id === over.id);
+      const targetColumn = overColumn || columns.find(c => c.id === overTask?.kanbanColumnId);
+      return `Task "${task?.text}" was moved to ${targetColumn?.name || 'unknown'} column.`;
+    },
+    onDragCancel({ active }: { active: { id: string | number } }) {
+      const task = tasks.find(t => t.id === active.id);
+      return `Dragging cancelled. Task "${task?.text}" returned to original position.`;
+    },
+  }), [tasks, columns, tasksByColumn]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5, // Lower distance for more responsive drag
+        distance: 8, // Industry standard (Notion ~10px, Linear ~8px) - prevents accidental drags
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 150, // Short delay for touch to distinguish from scroll
-        tolerance: 5,
+        delay: 200, // Longer delay to distinguish drag from scroll on touch devices
+        tolerance: 8, // Allow some finger movement during hold
       },
     }),
     useSensor(KeyboardSensor, {
@@ -579,56 +691,76 @@ export const KanbanBoard: React.FC = () => {
     }
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = active.id as string;
     const overId = over.id as string;
 
-    const activeTaskData = tasks.find((t) => t.id === activeId);
-    if (!activeTaskData) return;
+    // Skip if same target (debounce optimization)
+    if (overId === lastOverIdRef.current) return;
 
-    // Find which column the item is being dragged over
-    const overColumn = columns.find((col) => col.id === overId);
-    const overTask = tasks.find((t) => t.id === overId);
+    // Clear any pending timeout
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current);
+    }
 
-    if (overColumn) {
-      // Dragging over a column directly
-      if (activeTaskData.kanbanColumnId !== overColumn.id) {
-        // Don't persist during drag - only update local state
-        moveTaskToColumn(activeId, overColumn.id, 0, false);
-      }
-    } else if (overTask) {
-      // Dragging over another task
-      if (activeTaskData.kanbanColumnId !== overTask.kanbanColumnId) {
-        // Cross-column move
-        const overTaskColumn = overTask.kanbanColumnId;
-        if (overTaskColumn) {
+    // Debounce the actual handling (50ms)
+    dragOverTimeoutRef.current = setTimeout(() => {
+      lastOverIdRef.current = overId;
+
+      const activeId = active.id as string;
+      const activeTaskData = tasks.find((t) => t.id === activeId);
+      if (!activeTaskData) return;
+
+      // Find which column the item is being dragged over
+      const overColumn = columns.find((col) => col.id === overId);
+      const overTask = tasks.find((t) => t.id === overId);
+
+      if (overColumn) {
+        // Dragging over a column directly
+        if (activeTaskData.kanbanColumnId !== overColumn.id) {
           // Don't persist during drag - only update local state
-          moveTaskToColumn(activeId, overTaskColumn, overTask.kanbanPosition ?? 0, false);
+          moveTaskToColumn(activeId, overColumn.id, 0, false);
         }
-      } else {
-        // Same-column reordering - provide visual feedback
-        const columnId = activeTaskData.kanbanColumnId;
-        if (columnId) {
-          const columnTasks = tasksByColumn[columnId] || [];
-          const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
-          const newIndex = columnTasks.findIndex((t) => t.id === overId);
+      } else if (overTask) {
+        // Dragging over another task
+        if (activeTaskData.kanbanColumnId !== overTask.kanbanColumnId) {
+          // Cross-column move
+          const overTaskColumn = overTask.kanbanColumnId;
+          if (overTaskColumn) {
+            // Don't persist during drag - only update local state
+            moveTaskToColumn(activeId, overTaskColumn, overTask.kanbanPosition ?? 0, false);
+          }
+        } else {
+          // Same-column reordering - provide visual feedback
+          const columnId = activeTaskData.kanbanColumnId;
+          if (columnId) {
+            const columnTasks = tasksByColumn[columnId] || [];
+            const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
+            const newIndex = columnTasks.findIndex((t) => t.id === overId);
 
-          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-            // Reorder locally for visual feedback
-            const reordered = arrayMove(columnTasks, oldIndex, newIndex) as Task[];
-            reorderKanbanTasks(columnId, reordered.map(t => t.id));
+            if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+              // Reorder locally for visual feedback
+              const reordered = arrayMove(columnTasks, oldIndex, newIndex) as Task[];
+              reorderKanbanTasks(columnId, reordered.map(t => t.id));
+            }
           }
         }
       }
-    }
-  };
+    }, 50);
+  }, [tasks, columns, tasksByColumn, moveTaskToColumn, reorderKanbanTasks]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
+
+    // Clear debounce state
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current);
+      dragOverTimeoutRef.current = null;
+    }
+    lastOverIdRef.current = null;
 
     // If no valid drop target, reset to original position
     if (!over) {
@@ -698,6 +830,13 @@ export const KanbanBoard: React.FC = () => {
   const handleDragCancel = async (event: DragCancelEvent) => {
     const { active } = event;
     setActiveTask(null);
+
+    // Clear debounce state
+    if (dragOverTimeoutRef.current) {
+      clearTimeout(dragOverTimeoutRef.current);
+      dragOverTimeoutRef.current = null;
+    }
+    lastOverIdRef.current = null;
 
     // Reset to original position on cancel
     if (originalTaskState && active.id) {
@@ -773,31 +912,45 @@ export const KanbanBoard: React.FC = () => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
+        accessibility={{ announcements }}
       >
         <div className="flex-1 overflow-x-auto p-4">
-          <div className="flex gap-4 h-full min-w-max">
-            {columns
-              .sort((a, b) => a.position - b.position)
-              .map((column) => (
-                <KanbanColumnComponent
-                  key={column.id}
-                  column={column}
-                  tasks={tasksByColumn[column.id] || []}
-                  onAddTask={setQuickAddColumnId}
-                  onDeleteTask={handleDeleteTask}
-                  onMoveToBacklog={handleMoveToBacklog}
-                  onToggleAutoclaude={handleToggleAutoclaude}
-                  onAddFeedback={handleAddFeedback}
-                />
-              ))}
-          </div>
+          <LayoutGroup>
+            <div className="flex gap-4 h-full min-w-max">
+              {columns
+                .sort((a, b) => a.position - b.position)
+                .map((column) => (
+                  <KanbanColumnComponent
+                    key={column.id}
+                    column={column}
+                    tasks={tasksByColumn[column.id] || []}
+                    onAddTask={setQuickAddColumnId}
+                    onDeleteTask={handleDeleteTask}
+                    onMoveToBacklog={handleMoveToBacklog}
+                    onToggleAutoclaude={handleToggleAutoclaude}
+                    onAddFeedback={handleAddFeedback}
+                  />
+                ))}
+            </div>
+          </LayoutGroup>
         </div>
 
         <DragOverlay dropAnimation={dropAnimation}>
           {activeTask && (
-            <div className="cursor-grabbing">
+            <motion.div
+              initial={{ scale: 1, rotate: 0 }}
+              animate={{
+                scale: 1.05,
+                rotate: 2,
+              }}
+              transition={SPRING_CONFIGS.snappy}
+              className="cursor-grabbing"
+              style={{
+                boxShadow: '0 25px 50px -12px rgba(255, 0, 255, 0.4)',
+              }}
+            >
               <TaskCard task={activeTask} isDragging />
-            </div>
+            </motion.div>
           )}
         </DragOverlay>
       </DndContext>
