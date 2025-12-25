@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
         }
       },
       build: {
-        minify: true,
+        minify: false,
         rollupOptions: {
           output: {
             manualChunks: {
