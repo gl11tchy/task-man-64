@@ -1,18 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, Bot } from 'lucide-react';
+import { Play, Pause, Bot, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 
 export const AutoclaudeToggle: React.FC = () => {
   const { projects, currentProjectId, toggleAutoclaudePaused } = useProjectStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const currentProject = projects.find(p => p.id === currentProjectId);
   const isPaused = currentProject?.autoclaudePaused ?? true;
   const hasRepoUrl = !!currentProject?.repoUrl;
 
   const handleToggle = async () => {
-    if (!currentProjectId || !hasRepoUrl) return;
-    await toggleAutoclaudePaused(currentProjectId);
+    if (!currentProjectId || !hasRepoUrl || isLoading) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      await toggleAutoclaudePaused(currentProjectId);
+    } catch (err) {
+      setError('Failed to update. Try again.');
+      console.error('Toggle failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!hasRepoUrl) {
@@ -25,30 +38,42 @@ export const AutoclaudeToggle: React.FC = () => {
   }
 
   return (
-    <motion.button
-      onClick={handleToggle}
-      className={`
-        flex items-center gap-2 px-4 py-2 rounded-lg font-pixel text-sm
-        transition-all duration-200
-        ${isPaused
-          ? 'bg-arcade-green/20 text-arcade-green hover:bg-arcade-green/30 border border-arcade-green/30'
-          : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-        }
-      `}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-    >
-      {isPaused ? (
-        <>
-          <Play size={14} />
-          <span>Start</span>
-        </>
-      ) : (
-        <>
-          <Pause size={14} />
-          <span>Pause</span>
-        </>
+    <div className="flex flex-col items-end gap-1">
+      <motion.button
+        onClick={handleToggle}
+        disabled={isLoading}
+        className={`
+          flex items-center gap-2 px-4 py-2 rounded-lg font-pixel text-sm
+          transition-all duration-200
+          ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+          ${isPaused
+            ? 'bg-arcade-green/20 text-arcade-green hover:bg-arcade-green/30 border border-arcade-green/30'
+            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+          }
+        `}
+        whileHover={isLoading ? {} : { scale: 1.02 }}
+        whileTap={isLoading ? {} : { scale: 0.98 }}
+      >
+        {isLoading ? (
+          <>
+            <Loader2 size={14} className="animate-spin" />
+            <span>...</span>
+          </>
+        ) : isPaused ? (
+          <>
+            <Play size={14} />
+            <span>Start</span>
+          </>
+        ) : (
+          <>
+            <Pause size={14} />
+            <span>Pause</span>
+          </>
+        )}
+      </motion.button>
+      {error && (
+        <span className="font-pixel text-[10px] text-red-400">{error}</span>
       )}
-    </motion.button>
+    </div>
   );
 };

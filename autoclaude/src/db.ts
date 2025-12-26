@@ -20,14 +20,21 @@ export interface ProjectColumns {
   resolved: string;
 }
 
-// Cache for project columns to avoid repeated lookups
-const columnCache = new Map<string, ProjectColumns>();
+// Cache for project columns with TTL to avoid stale data
+interface CachedColumns {
+  columns: ProjectColumns;
+  cachedAt: number;
+}
+const columnCache = new Map<string, CachedColumns>();
+const CACHE_TTL_MS = 60000; // 1 minute TTL
 
 // Get column IDs for a project by matching column names
 export async function getProjectColumns(projectId: string): Promise<ProjectColumns | null> {
-  // Check cache first
+  // Check cache first (with TTL)
   const cached = columnCache.get(projectId);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.columns;
+  }
 
   const rows = await sql`
     SELECT id, name FROM kanban_columns 
@@ -60,8 +67,17 @@ export async function getProjectColumns(projectId: string): Promise<ProjectColum
   if (!backlog || !inProgress || !resolved) return null;
   
   const columns = { backlog, inProgress, resolved };
-  columnCache.set(projectId, columns);
+  columnCache.set(projectId, { columns, cachedAt: Date.now() });
   return columns;
+}
+
+// Invalidate column cache for a project (call on error or when columns might have changed)
+export function invalidateColumnCache(projectId?: string): void {
+  if (projectId) {
+    columnCache.delete(projectId);
+  } else {
+    columnCache.clear();
+  }
 }
 
 // Extended task type with column info

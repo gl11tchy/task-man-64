@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { CONFIG } from './config.js';
 import * as db from './db.js';
+import * as events from './events.js';
 import { processNewTask, processFeedbackTask } from './worker.js';
 
 const execFileAsync = promisify(execFile);
@@ -87,6 +88,11 @@ async function poll(): Promise<number> {
         console.log(`Claimed task: ${task.id}`);
         await processNewTask(task);
       }
+    }
+
+    // Cleanup old events during idle polls (no tasks processed)
+    if (feedbackTasks.length === 0 && newTasks.length === 0) {
+      await events.cleanupOldEvents(24); // Keep last 24 hours
     }
 
     // Reset error counter on successful poll
