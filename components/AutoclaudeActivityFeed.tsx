@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   GitBranch,
@@ -77,26 +77,37 @@ export const AutoclaudeActivityFeed: React.FC = () => {
   const currentProject = projects.find(p => p.id === currentProjectId);
   const isPaused = currentProject?.autoclaudePaused ?? true;
 
+  // Stable reference to avoid effect re-running on every render
+  const loadEventsRef = useRef(loadAutoclaudeEvents);
+  loadEventsRef.current = loadAutoclaudeEvents;
+
   // Poll for new events every 3 seconds when not paused
   useEffect(() => {
+    // Always clear any existing interval first to prevent leaks
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
     if (!currentProjectId) return;
 
     // Initial load
-    loadAutoclaudeEvents();
+    loadEventsRef.current();
 
     // Set up polling only when not paused
     if (!isPaused) {
       intervalRef.current = setInterval(() => {
-        loadAutoclaudeEvents();
+        loadEventsRef.current();
       }, 3000);
     }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [currentProjectId, loadAutoclaudeEvents, isPaused]);
+  }, [currentProjectId, isPaused]);
 
   if (isLoadingEvents && autoclaudeEvents.length === 0) {
     return (
