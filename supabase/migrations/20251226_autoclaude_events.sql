@@ -85,6 +85,19 @@ BEGIN
   END IF;
 END $$;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'autoclaude_events' AND policyname = 'Allow update for events'
+  ) THEN
+    CREATE POLICY "Allow update for events"
+      ON autoclaude_events FOR UPDATE
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;
+
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_autoclaude_events_project 
   ON autoclaude_events(project_id, created_at DESC);

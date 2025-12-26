@@ -62,6 +62,11 @@ const EventItem: React.FC<{ event: AutoclaudeEvent }> = ({ event }) => {
         <p className="font-pixel text-xs text-white truncate">
           {event.message}
         </p>
+        {event.taskText && (
+          <p className="font-pixel text-[10px] text-white/40 truncate mt-0.5">
+            Task: {event.taskText}
+          </p>
+        )}
         <p className="font-pixel text-[10px] text-white/30 mt-0.5">
           {formatTime(event.createdAt)}
         </p>

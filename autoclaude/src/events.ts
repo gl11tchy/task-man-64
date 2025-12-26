@@ -3,6 +3,35 @@ import { CONFIG } from './config.js';
 
 const sql = neon(CONFIG.DATABASE_URL);
 
+/**
+ * Safely stringify metadata, handling edge cases that could produce invalid JSON
+ */
+function safeStringifyMetadata(metadata: Record<string, unknown> | undefined): string {
+  if (!metadata || typeof metadata !== 'object') {
+    return '{}';
+  }
+  
+  try {
+    // Filter out undefined values and non-serializable types
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
+        continue;
+      }
+      // Handle BigInt
+      if (typeof value === 'bigint') {
+        sanitized[key] = value.toString();
+        continue;
+      }
+      sanitized[key] = value;
+    }
+    return JSON.stringify(sanitized);
+  } catch (error) {
+    console.error('Failed to stringify metadata:', error);
+    return '{}';
+  }
+}
+
 export type EventType =
   | 'task_started'
   | 'cloning_repo'
@@ -34,7 +63,7 @@ export async function emitEvent(
         ${taskId ?? null},
         ${eventType},
         ${message},
-        ${JSON.stringify(metadata ?? {})},
+        ${safeStringifyMetadata(metadata)},
         ${CONFIG.INSTANCE_ID}
       )
     `;

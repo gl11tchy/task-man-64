@@ -1,3 +1,9 @@
+/**
+ * NOTE: Daemon types use snake_case to match database column names directly.
+ * This avoids mapping overhead since the daemon works directly with DB rows.
+ * The frontend (types.ts) uses camelCase and maps during load/save.
+ */
+
 export interface Task {
   id: string;
   text: string;
