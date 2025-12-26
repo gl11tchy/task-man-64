@@ -297,6 +297,7 @@ export class ProjectStorage {
         isArchived: row.is_archived,
         user_id: row.user_id,
         repoUrl: row.repo_url,
+        autoclaudePaused: row.autoclaude_paused ?? true,
       }));
 
       return { data: projects };
@@ -341,7 +342,8 @@ export class ProjectStorage {
           color = COALESCE(${updates.color ?? null}, color),
           description = COALESCE(${updates.description ?? null}, description),
           is_archived = ${updates.isArchived !== undefined ? updates.isArchived : sql`is_archived`},
-          repo_url = ${updates.repoUrl !== undefined ? updates.repoUrl : sql`repo_url`}
+          repo_url = ${updates.repoUrl !== undefined ? updates.repoUrl : sql`repo_url`},
+          autoclaude_paused = ${updates.autoclaudePaused !== undefined ? updates.autoclaudePaused : sql`autoclaude_paused`}
         WHERE id = ${id} AND user_id = ${this.userId}
       `;
 

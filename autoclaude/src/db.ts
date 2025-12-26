@@ -82,6 +82,7 @@ export async function getClaimableTasks(): Promise<TaskWithColumns[]> {
     JOIN kanban_columns c ON t.kanban_column_id = c.id
     WHERE t.autoclaude_enabled = true
       AND p.repo_url IS NOT NULL
+      AND p.autoclaude_paused = false
       AND (t.claimed_at IS NULL OR t.claimed_at < ${claimTimeout})
       AND (t.attempt_count IS NULL OR t.attempt_count < ${CONFIG.MAX_RETRY_ATTEMPTS})
     ORDER BY t.created_at ASC
@@ -117,6 +118,7 @@ export async function getFeedbackTasks(): Promise<TaskWithColumns[]> {
       AND t.feedback IS NOT NULL
       AND t.feedback != ''
       AND p.repo_url IS NOT NULL
+      AND p.autoclaude_paused = false
       AND (t.claimed_at IS NULL OR t.claimed_at < ${claimTimeout})
       AND (t.attempt_count IS NULL OR t.attempt_count < ${CONFIG.MAX_RETRY_ATTEMPTS})
     ORDER BY t.created_at ASC

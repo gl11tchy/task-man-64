@@ -3,6 +3,7 @@ import { TaskWithColumns } from './db.js';
 import * as git from './git.js';
 import * as github from './github.js';
 import * as claude from './claude.js';
+import * as events from './events.js';
 import { CONFIG } from './config.js';
 
 export async function processNewTask(task: TaskWithColumns): Promise<void> {
@@ -13,17 +14,29 @@ export async function processNewTask(task: TaskWithColumns): Promise<void> {
   console.log(`[${task.id}] Processing${isRetry ? ' (retry)' : ''}: ${task.text.slice(0, 50)}...`);
   console.log(`${'='.repeat(60)}\n`);
 
+  // Emit: task started
+  await events.emitEvent(
+    task.project_id as string,
+    'task_started',
+    `Processing: ${task.text.slice(0, 60)}${task.text.length > 60 ? '...' : ''}`,
+    task.id,
+    { isRetry, attemptCount: task.attempt_count }
+  );
+
   try {
     // 1. Clone/pull repo
     console.log(`[${task.id}] Cloning repo...`);
+    await events.emitEvent(task.project_id as string, 'cloning_repo', `Cloning repository...`, task.id);
     const workDir = await git.cloneOrPull(task.repo_url, task.id);
 
     // 2. Create branch
     console.log(`[${task.id}] Creating branch ${branchName}...`);
+    await events.emitEvent(task.project_id as string, 'creating_branch', `Creating branch: ${branchName}`, task.id);
     await git.createBranch(workDir, branchName);
 
     // 3. Run Claude
     console.log(`[${task.id}] Running Claude...`);
+    await events.emitEvent(task.project_id as string, 'running_claude', 'Running Claude to implement changes...', task.id);
     const result = await claude.runClaude(workDir, task.text);
 
     if (!result.success) {
@@ -32,6 +45,7 @@ export async function processNewTask(task: TaskWithColumns): Promise<void> {
 
     // 4. Commit and push (force on retry to handle diverged branches)
     console.log(`[${task.id}] Committing and pushing...`);
+    await events.emitEvent(task.project_id as string, 'committing', 'Committing and pushing changes...', task.id);
     const commitResult = await git.commitAndPush(
       workDir,
       `autoclaude: ${task.text.slice(0, 50)}`,
@@ -46,6 +60,7 @@ export async function processNewTask(task: TaskWithColumns): Promise<void> {
 
     // 6. Create PR (or get existing one if retry)
     console.log(`[${task.id}] Creating PR...`);
+    await events.emitEvent(task.project_id as string, 'creating_pr', 'Creating pull request...', task.id);
     let prUrl: string;
     try {
       prUrl = await github.createPR(
@@ -67,6 +82,13 @@ export async function processNewTask(task: TaskWithColumns): Promise<void> {
 
     // 7. Mark resolved
     console.log(`[${task.id}] Done! PR: ${prUrl}`);
+    await events.emitEvent(
+      task.project_id as string,
+      'task_completed',
+      `Task completed! PR: ${prUrl}`,
+      task.id,
+      { prUrl }
+    );
     await db.resolveTask(task.id, prUrl, task.columns.resolved);
 
     // 8. Cleanup work directory on success
@@ -78,6 +100,14 @@ export async function processNewTask(task: TaskWithColumns): Promise<void> {
   } catch (error) {
     console.error(`[${task.id}] Error:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    await events.emitEvent(
+      task.project_id as string,
+      'task_failed',
+      `Failed: ${errorMessage.slice(0, 100)}`,
+      task.id,
+      { error: errorMessage }
+    );
     await db.recordError(task.id, errorMessage, task.columns.backlog);
     // Keep work directory on error for debugging
   }
@@ -91,16 +121,28 @@ export async function processFeedbackTask(task: TaskWithColumns): Promise<void> 
   console.log(`[${task.id}] Processing feedback${isRetry ? ' (retry)' : ''}: ${task.feedback?.slice(0, 50)}...`);
   console.log(`${'='.repeat(60)}\n`);
 
+  // Emit: feedback started
+  await events.emitEvent(
+    task.project_id as string,
+    'feedback_started',
+    `Addressing feedback: ${task.feedback?.slice(0, 60)}...`,
+    task.id,
+    { isRetry }
+  );
+
   try {
     // 1. Get existing work dir or clone
+    await events.emitEvent(task.project_id as string, 'cloning_repo', 'Syncing repository...', task.id);
     const workDir = await git.cloneOrPull(task.repo_url, task.id);
 
     // 2. Checkout existing branch
     console.log(`[${task.id}] Checking out branch ${branchName}...`);
+    await events.emitEvent(task.project_id as string, 'creating_branch', `Checking out branch: ${branchName}`, task.id);
     await git.checkoutBranch(workDir, branchName);
 
     // 3. Run Claude with feedback context
     console.log(`[${task.id}] Running Claude with feedback...`);
+    await events.emitEvent(task.project_id as string, 'running_claude', 'Running Claude to address feedback...', task.id);
     const feedbackPrompt = `
 Original task: ${task.text}
 
@@ -118,6 +160,7 @@ Please address this feedback and make the necessary changes.
 
     // 4. Commit and push (to existing PR, force on retry to handle diverged branches)
     console.log(`[${task.id}] Pushing feedback fixes...`);
+    await events.emitEvent(task.project_id as string, 'committing', 'Pushing feedback fixes...', task.id);
     const commitResult = await git.commitAndPush(workDir, `autoclaude: address feedback`, branchName, isRetry);
 
     // 5. Add comment to PR (even if no changes, to acknowledge the feedback)
@@ -132,6 +175,13 @@ Please address this feedback and make the necessary changes.
 
     // 6. Move back to resolved
     console.log(`[${task.id}] Feedback addressed!`);
+    await events.emitEvent(
+      task.project_id as string,
+      'feedback_completed',
+      'Feedback addressed successfully!',
+      task.id,
+      { prUrl: task.pr_url }
+    );
     await db.resolveTask(task.id, task.pr_url!, task.columns.resolved);
 
     // 7. Cleanup work directory on success
@@ -143,6 +193,14 @@ Please address this feedback and make the necessary changes.
   } catch (error) {
     console.error(`[${task.id}] Error:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    await events.emitEvent(
+      task.project_id as string,
+      'task_failed',
+      `Feedback failed: ${errorMessage.slice(0, 100)}`,
+      task.id,
+      { error: errorMessage }
+    );
     // Use recordFeedbackError to keep task in IN_PROGRESS column
     await db.recordFeedbackError(task.id, errorMessage);
     // Keep work directory on error for debugging

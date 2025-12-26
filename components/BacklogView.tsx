@@ -30,13 +30,14 @@ import {
   Tag,
   Plus,
   Github,
-  Settings,
-  ExternalLink,
   Check,
   AlertCircle,
+  Bot,
 } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { Task } from '../types';
+import { AutoclaudeToggle } from './AutoclaudeToggle';
+import { AutoclaudeActivityFeed } from './AutoclaudeActivityFeed';
 
 // ============ Backlog Item Component ============
 
@@ -416,22 +417,36 @@ export const BacklogView: React.FC = () => {
             )}
           </div>
           
-          <div className="text-right">
+          <div className="text-right space-y-2">
             <div className="text-xs font-pixel text-white/40 mb-1">Status</div>
-            <div className={`font-pixel text-sm ${repoUrl ? 'text-arcade-green' : 'text-white/30'}`}>
-              {repoUrl ? 'Ready' : 'Not configured'}
+            <div className={`font-pixel text-sm ${repoUrl ? (currentProject?.autoclaudePaused ? 'text-amber-400' : 'text-arcade-green') : 'text-white/30'}`}>
+              {repoUrl ? (currentProject?.autoclaudePaused ? 'Paused' : 'Running') : 'Not configured'}
             </div>
-            <div className="text-xs font-pixel text-white/30 mt-1">
+            <div className="text-xs font-pixel text-white/30">
               {autoclaudeTaskCount} task{autoclaudeTaskCount !== 1 ? 's' : ''} enabled
             </div>
+            <AutoclaudeToggle />
           </div>
         </div>
         
-        {repoUrl && (
+        {repoUrl && currentProject?.autoclaudePaused && (
           <div className="mt-3 p-2 bg-arcade-cyan/5 border border-arcade-cyan/20 rounded-lg">
             <p className="text-xs font-pixel text-arcade-cyan/80">
-              Run the daemon: <code className="bg-black/30 px-1.5 py-0.5 rounded">npm run autoclaude</code>
+              1. Run the daemon: <code className="bg-black/30 px-1.5 py-0.5 rounded">npm run autoclaude</code>
             </p>
+            <p className="text-[10px] font-pixel text-white/40 mt-1">
+              2. Click "Start" above to begin processing tasks
+            </p>
+          </div>
+        )}
+        
+        {repoUrl && !currentProject?.autoclaudePaused && (
+          <div className="mt-3 pt-3 border-t border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot size={12} className="text-arcade-cyan" />
+              <span className="font-pixel text-xs text-white/40">Activity</span>
+            </div>
+            <AutoclaudeActivityFeed />
           </div>
         )}
       </div>

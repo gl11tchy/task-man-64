@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { Project, KanbanColumn, Task, PROJECT_COLORS } from '../types';
+import { Project, KanbanColumn, Task, PROJECT_COLORS, AutoclaudeEvent } from '../types';
 import { ProjectStorage } from '../services/projectStorage';
 import { TaskStorage } from '../services/taskStorage';
+import { AutoclaudeEventStorage } from '../services/autoclaudeEventStorage';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ProjectState {
@@ -51,6 +52,14 @@ interface ProjectState {
 
   // Refresh
   refreshTasks: () => Promise<void>;
+
+  // AUTOCLAUDE events
+  autoclaudeEvents: AutoclaudeEvent[];
+  autoclaudeEventStorage: AutoclaudeEventStorage | null;
+  isLoadingEvents: boolean;
+  setAutoclaudeEventStorage: (storage: AutoclaudeEventStorage) => void;
+  loadAutoclaudeEvents: (projectId?: string) => Promise<void>;
+  toggleAutoclaudePaused: (projectId: string) => Promise<void>;
 }
 
 // Selector functions - use these instead of getters
@@ -91,6 +100,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isInitialized: false,
   projectStorage: null,
   taskStorage: null,
+  autoclaudeEvents: [],
+  autoclaudeEventStorage: null,
+  isLoadingEvents: false,
 
   // Storage setup
   setStorageRefs: (projectStorage, taskStorage) => {
@@ -694,5 +706,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     const tasks = await taskStorage.loadTasks();
     set({ tasks });
+  },
+
+  // AUTOCLAUDE event actions
+  setAutoclaudeEventStorage: (storage) => {
+    set({ autoclaudeEventStorage: storage });
+  },
+
+  loadAutoclaudeEvents: async (projectId) => {
+    const { autoclaudeEventStorage, currentProjectId } = get();
+    const targetProjectId = projectId ?? currentProjectId;
+    
+    if (!autoclaudeEventStorage || !targetProjectId) return;
+
+    set({ isLoadingEvents: true });
+    
+    try {
+      const events = await autoclaudeEventStorage.loadEvents(targetProjectId, 50);
+      set({ autoclaudeEvents: events, isLoadingEvents: false });
+    } catch (error) {
+      console.error('Failed to load autoclaude events:', error);
+      set({ isLoadingEvents: false });
+    }
+  },
+
+  toggleAutoclaudePaused: async (projectId) => {
+    const { projectStorage, projects } = get();
+    if (!projectStorage) return;
+
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    const newPausedState = !(project.autoclaudePaused ?? true);
+    
+    const result = await projectStorage.updateProject(projectId, { autoclaudePaused: newPausedState });
+    if (result.success) {
+      set((state) => ({
+        projects: state.projects.map(p =>
+          p.id === projectId ? { ...p, autoclaudePaused: newPausedState } : p
+        ),
+      }));
+    }
   },
 }));

@@ -13,21 +13,24 @@ import { useProjectStore } from './stores/projectStore';
 import { useUIStore } from './stores/uiStore';
 import { ProjectStorage } from './services/projectStorage';
 import { TaskStorage } from './services/taskStorage';
+import { AutoclaudeEventStorage } from './services/autoclaudeEventStorage';
 
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading } = useAuth();
   const { quickSwitcherOpen, closeQuickSwitcher, openQuickSwitcher, setCurrentView } = useUIStore();
-  const { setStorageRefs, initialize, isInitialized, setCurrentProject, projects } = useProjectStore();
+  const { setStorageRefs, initialize, isInitialized, setCurrentProject, projects, setAutoclaudeEventStorage } = useProjectStore();
 
   const projectStorageRef = useRef(new ProjectStorage());
   const taskStorageRef = useRef(new TaskStorage());
+  const autoclaudeEventStorageRef = useRef(new AutoclaudeEventStorage());
 
   // Update storage refs when user changes
   useEffect(() => {
     projectStorageRef.current.setUserId(user?.id || null);
     taskStorageRef.current.setUserId(user?.id || null);
+    autoclaudeEventStorageRef.current.setUserId(user?.id || null);
   }, [user]);
 
   // Initialize stores
@@ -35,8 +38,9 @@ export default function App() {
     if (authLoading) return;
 
     setStorageRefs(projectStorageRef.current, taskStorageRef.current);
+    setAutoclaudeEventStorage(autoclaudeEventStorageRef.current);
     initialize();
-  }, [authLoading, user, setStorageRefs, initialize]);
+  }, [authLoading, user, setStorageRefs, setAutoclaudeEventStorage, initialize]);
 
   // Keyboard shortcuts
   useEffect(() => {

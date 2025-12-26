@@ -18,6 +18,8 @@ export interface Project {
   user_id?: string | null;
   // AUTOCLAUDE: Repository URL for this project
   repoUrl?: string | null;
+  // AUTOCLAUDE: Whether processing is paused
+  autoclaudePaused?: boolean;
 }
 
 export interface KanbanColumn {
@@ -85,3 +87,29 @@ export const PROJECT_COLORS = [
   '#e53e3e', // Red
   '#dd6b20', // Orange
 ];
+
+// AUTOCLAUDE event types for activity feed
+export type AutoclaudeEventType =
+  | 'task_started'
+  | 'cloning_repo'
+  | 'creating_branch'
+  | 'running_claude'
+  | 'committing'
+  | 'creating_pr'
+  | 'task_completed'
+  | 'task_failed'
+  | 'feedback_started'
+  | 'feedback_completed';
+
+export interface AutoclaudeEvent {
+  id: string;
+  taskId: string | null;
+  projectId: string;
+  eventType: AutoclaudeEventType;
+  message: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+  daemonInstance: string | null;
+  // Optional enrichment from JOIN
+  taskText?: string;
+}
