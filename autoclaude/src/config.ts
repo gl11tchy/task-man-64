@@ -35,6 +35,8 @@ export const CONFIG = {
   CLAIM_TIMEOUT_MS: parseIntWithDefault(process.env.CLAIM_TIMEOUT_MS, 3600000, 'CLAIM_TIMEOUT_MS'), // 1 hour
   // Max retry attempts before giving up on a task
   MAX_RETRY_ATTEMPTS: parseIntWithDefault(process.env.MAX_RETRY_ATTEMPTS, 3, 'MAX_RETRY_ATTEMPTS'),
+  // Timeout for Claude CLI execution (prevents hangs)
+  CLAUDE_TIMEOUT_MS: parseIntWithDefault(process.env.CLAUDE_TIMEOUT_MS, 600000, 'CLAUDE_TIMEOUT_MS'), // 10 minutes
   // Cleanup work directories after successful completion
   CLEANUP_ON_SUCCESS: process.env.CLEANUP_ON_SUCCESS !== 'false', // default true
 };

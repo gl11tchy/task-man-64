@@ -25,3 +25,12 @@ dist-ssr
 .env
 .vercel
 .env*.local
+
+# Autoclaude daemon
+autoclaude/.env
+
+# One-off scripts
+scripts/
+
+# Serena AI assistant
+.serena/

@@ -1,6 +1,53 @@
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { CONFIG } from './config.js';
 import * as db from './db.js';
 import { processNewTask, processFeedbackTask } from './worker.js';
+
+const execFileAsync = promisify(execFile);
+
+// Track consecutive errors for backoff
+let consecutiveErrors = 0;
+const MAX_BACKOFF_MS = 300000; // 5 minutes max backoff
+
+// Validate all required CLI tools are available
+async function validateDependencies(): Promise<void> {
+  console.log('Validating dependencies...');
+
+  // Check claude CLI
+  try {
+    await execFileAsync('claude', ['--version']);
+    console.log('  ✓ claude CLI found');
+  } catch {
+    throw new Error('claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code');
+  }
+
+  // Check git
+  try {
+    await execFileAsync('git', ['--version']);
+    console.log('  ✓ git found');
+  } catch {
+    throw new Error('git not found. Please install git.');
+  }
+
+  // Check gh CLI
+  try {
+    await execFileAsync('gh', ['--version']);
+    console.log('  ✓ gh CLI found');
+  } catch {
+    throw new Error('gh CLI not found. Install from: https://cli.github.com');
+  }
+
+  // Verify gh is authenticated
+  try {
+    await execFileAsync('gh', ['auth', 'status']);
+    console.log('  ✓ gh CLI authenticated');
+  } catch {
+    throw new Error('gh CLI not authenticated. Run: gh auth login');
+  }
+
+  console.log('All dependencies validated!\n');
+}
 
 console.log(`
 ╔═══════════════════════════════════════════════════════════╗
@@ -13,7 +60,7 @@ console.log(`
 ╚═══════════════════════════════════════════════════════════╝
 `);
 
-async function poll() {
+async function poll(): Promise<number> {
   try {
     // Check for tasks with feedback first (higher priority)
     const feedbackTasks = await db.getFeedbackTasks();
@@ -41,22 +88,32 @@ async function poll() {
         await processNewTask(task);
       }
     }
+
+    // Reset error counter on successful poll
+    consecutiveErrors = 0;
+    return 0; // No extra delay needed
   } catch (error) {
-    console.error('Poll error:', error);
+    consecutiveErrors++;
+    const backoffMs = Math.min(
+      CONFIG.POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors),
+      MAX_BACKOFF_MS
+    );
+    console.error(`Poll error (attempt ${consecutiveErrors}), backing off ${backoffMs}ms:`, error);
+    return backoffMs; // Return delay instead of sleeping here
   }
 }
 
 // Main loop
 async function main() {
+  // Validate dependencies before starting
+  await validateDependencies();
+
   console.log('Starting polling loop...\n');
 
-  // Initial poll
-  await poll();
-
-  // Continue polling
+  // Polling loop with backoff support
   while (true) {
-    await new Promise(resolve => setTimeout(resolve, CONFIG.POLL_INTERVAL_MS));
-    await poll();
+    const extraDelay = await poll();
+    await new Promise(resolve => setTimeout(resolve, CONFIG.POLL_INTERVAL_MS + extraDelay));
   }
 }
 
