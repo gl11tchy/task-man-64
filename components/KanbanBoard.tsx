@@ -562,6 +562,7 @@ export const KanbanBoard: React.FC = () => {
   const {
     columns,
     tasks,
+    projects,
     currentProjectId,
     addTask,
     updateTask,
@@ -570,6 +571,8 @@ export const KanbanBoard: React.FC = () => {
     moveTaskToBacklog,
     reorderKanbanTasks,
   } = useProjectStore();
+
+  const currentProject = projects.find(p => p.id === currentProjectId);
 
   const { addScore } = useUIStore();
 
@@ -863,9 +866,15 @@ export const KanbanBoard: React.FC = () => {
 
   const handleToggleAutoclaude = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      await updateTask(taskId, { autoclaudeEnabled: !task.autoclaudeEnabled });
+    if (!task) return;
+    
+    // Prevent enabling autoclaude if project has no repo URL
+    if (!task.autoclaudeEnabled && !currentProject?.repoUrl) {
+      alert('Add a repo URL to this project before enabling AUTOCLAUDE');
+      return;
     }
+    
+    await updateTask(taskId, { autoclaudeEnabled: !task.autoclaudeEnabled });
   };
 
   const handleAddFeedback = (taskId: string) => {
@@ -927,7 +936,7 @@ export const KanbanBoard: React.FC = () => {
                     onAddTask={setQuickAddColumnId}
                     onDeleteTask={handleDeleteTask}
                     onMoveToBacklog={handleMoveToBacklog}
-                    onToggleAutoclaude={handleToggleAutoclaude}
+                    onToggleAutoclaude={currentProject?.repoUrl ? handleToggleAutoclaude : undefined}
                     onAddFeedback={handleAddFeedback}
                   />
                 ))}

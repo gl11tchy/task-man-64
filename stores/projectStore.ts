@@ -78,6 +78,29 @@ export const selectCompletedTasks = (state: ProjectState) =>
     .filter(t => t.projectId === state.currentProjectId && t.status === 'completed')
     .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 
+
+// Check if project has active AUTOCLAUDE tasks (claimed or enabled but not completed)
+export const selectHasActiveAutoclaudeTasks = (state: ProjectState, projectId?: string) => {
+  const targetProjectId = projectId || state.currentProjectId;
+  if (!targetProjectId) return false;
+  return state.tasks.some(t =>
+    t.projectId === targetProjectId &&
+    t.status !== 'completed' &&
+    (t.autoclaudeEnabled || t.claimedAt)
+  );
+};
+
+
+// Check if AUTOCLAUDE has ever been used on this project (has PR or attempted work)
+export const selectHasAutoclaudeHistory = (state: ProjectState, projectId?: string) => {
+  const targetProjectId = projectId || state.currentProjectId;
+  if (!targetProjectId) return false;
+  return state.tasks.some(t =>
+    t.projectId === targetProjectId &&
+    (t.prUrl || (t.attemptCount && t.attemptCount > 0))
+  );
+};
+
 export const selectBacklogTasks = (state: ProjectState) =>
   state.tasks
     .filter(t => t.projectId === state.currentProjectId && t.isInBacklog)

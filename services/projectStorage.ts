@@ -336,16 +336,30 @@ export class ProjectStorage {
     if (!sql) return { success: false, error: new Error('Database not available') };
 
     try {
-      await sql`
-        UPDATE projects SET
-          name = COALESCE(${updates.name ?? null}, name),
-          color = COALESCE(${updates.color ?? null}, color),
-          description = COALESCE(${updates.description ?? null}, description),
-          is_archived = ${updates.isArchived !== undefined ? updates.isArchived : sql`is_archived`},
-          repo_url = ${updates.repoUrl !== undefined ? updates.repoUrl : sql`repo_url`},
-          autoclaude_paused = ${updates.autoclaudePaused !== undefined ? updates.autoclaudePaused : sql`autoclaude_paused`}
-        WHERE id = ${id} AND user_id = ${this.userId}
-      `;
+      // Build SET clauses only for fields that are actually being updated
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      const addField = (column: string, value: unknown) => {
+        setClauses.push(`${column} = $${paramIndex++}`);
+        values.push(value);
+      };
+
+      if (updates.name !== undefined) addField('name', updates.name);
+      if (updates.color !== undefined) addField('color', updates.color);
+      if (updates.description !== undefined) addField('description', updates.description);
+      if (updates.isArchived !== undefined) addField('is_archived', updates.isArchived);
+      if (updates.repoUrl !== undefined) addField('repo_url', updates.repoUrl);
+      if (updates.autoclaudePaused !== undefined) addField('autoclaude_paused', updates.autoclaudePaused);
+
+      if (setClauses.length === 0) {
+        return { success: true };
+      }
+
+      values.push(id, this.userId);
+      const query = `UPDATE projects SET ${setClauses.join(', ')} WHERE id = $${paramIndex++} AND user_id = $${paramIndex}`;
+      await sql(query, values);
 
       return { success: true };
     } catch (error) {
@@ -421,14 +435,28 @@ export class ProjectStorage {
     if (!sql) return { success: false, error: new Error('Database not available') };
 
     try {
-      await sql`
-        UPDATE kanban_columns SET
-          name = COALESCE(${updates.name ?? null}, name),
-          color = COALESCE(${updates.color ?? null}, color),
-          position = ${updates.position !== undefined ? updates.position : sql`position`},
-          is_done_column = ${updates.isDoneColumn !== undefined ? updates.isDoneColumn : sql`is_done_column`}
-        WHERE id = ${id}
-      `;
+      // Build SET clauses only for fields that are actually being updated
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      const addField = (column: string, value: unknown) => {
+        setClauses.push(`${column} = $${paramIndex++}`);
+        values.push(value);
+      };
+
+      if (updates.name !== undefined) addField('name', updates.name);
+      if (updates.color !== undefined) addField('color', updates.color);
+      if (updates.position !== undefined) addField('position', updates.position);
+      if (updates.isDoneColumn !== undefined) addField('is_done_column', updates.isDoneColumn);
+
+      if (setClauses.length === 0) {
+        return { success: true };
+      }
+
+      values.push(id);
+      const query = `UPDATE kanban_columns SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`;
+      await sql(query, values);
 
       return { success: true };
     } catch (error) {

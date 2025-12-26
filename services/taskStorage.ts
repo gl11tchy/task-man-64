@@ -327,30 +327,53 @@ export class TaskStorage {
     if (!sql) return { success: false, error: new Error('Database not available') };
 
     try {
-      // Build dynamic update - Neon's tagged template doesn't support dynamic column names easily
-      // So we update all fields that might change
-      await sql`
-        UPDATE tasks SET
-          text = COALESCE(${updates.text ?? null}, text),
-          status = COALESCE(${updates.status ?? null}, status),
-          completed_at = ${updates.completedAt !== undefined ? (updates.completedAt ? new Date(updates.completedAt).toISOString() : null) : sql`completed_at`},
-          project_id = COALESCE(${updates.projectId ?? null}, project_id),
-          kanban_column_id = ${updates.kanbanColumnId !== undefined ? updates.kanbanColumnId : sql`kanban_column_id`},
-          kanban_position = ${updates.kanbanPosition !== undefined ? updates.kanbanPosition : sql`kanban_position`},
-          backlog_position = ${updates.backlogPosition !== undefined ? updates.backlogPosition : sql`backlog_position`},
-          is_in_backlog = ${updates.isInBacklog !== undefined ? updates.isInBacklog : sql`is_in_backlog`},
-          due_date = ${updates.dueDate !== undefined ? (updates.dueDate ? new Date(updates.dueDate).toISOString() : null) : sql`due_date`},
-          priority = ${updates.priority !== undefined ? updates.priority : sql`priority`},
-          tags = ${updates.tags !== undefined ? updates.tags : sql`tags`},
-          pr_url = ${updates.prUrl !== undefined ? updates.prUrl : sql`pr_url`},
-          feedback = ${updates.feedback !== undefined ? updates.feedback : sql`feedback`},
-          claimed_at = ${updates.claimedAt !== undefined ? updates.claimedAt : sql`claimed_at`},
-          claimed_by = ${updates.claimedBy !== undefined ? updates.claimedBy : sql`claimed_by`},
-          autoclaude_enabled = ${updates.autoclaudeEnabled !== undefined ? updates.autoclaudeEnabled : sql`autoclaude_enabled`},
-          attempt_count = ${updates.attemptCount !== undefined ? updates.attemptCount : sql`attempt_count`},
-          last_error = ${updates.lastError !== undefined ? updates.lastError : sql`last_error`}
-        WHERE id = ${id} AND user_id = ${this.userId}
-      `;
+      // Build SET clauses only for fields that are actually being updated
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      // Helper to add a field update
+      const addField = (column: string, value: unknown) => {
+        setClauses.push(`${column} = $${paramIndex++}`);
+        values.push(value);
+      };
+
+      // Only add fields that are defined in updates
+      if (updates.text !== undefined) addField('text', updates.text);
+      if (updates.status !== undefined) addField('status', updates.status);
+      if (updates.completedAt !== undefined) {
+        addField('completed_at', updates.completedAt ? new Date(updates.completedAt).toISOString() : null);
+      }
+      if (updates.projectId !== undefined) addField('project_id', updates.projectId);
+      if (updates.kanbanColumnId !== undefined) addField('kanban_column_id', updates.kanbanColumnId);
+      if (updates.kanbanPosition !== undefined) addField('kanban_position', updates.kanbanPosition);
+      if (updates.backlogPosition !== undefined) addField('backlog_position', updates.backlogPosition);
+      if (updates.isInBacklog !== undefined) addField('is_in_backlog', updates.isInBacklog);
+      if (updates.dueDate !== undefined) {
+        addField('due_date', updates.dueDate ? new Date(updates.dueDate).toISOString() : null);
+      }
+      if (updates.priority !== undefined) addField('priority', updates.priority);
+      if (updates.tags !== undefined) addField('tags', updates.tags);
+      if (updates.prUrl !== undefined) addField('pr_url', updates.prUrl);
+      if (updates.feedback !== undefined) addField('feedback', updates.feedback);
+      if (updates.claimedAt !== undefined) addField('claimed_at', updates.claimedAt);
+      if (updates.claimedBy !== undefined) addField('claimed_by', updates.claimedBy);
+      if (updates.autoclaudeEnabled !== undefined) addField('autoclaude_enabled', updates.autoclaudeEnabled);
+      if (updates.attemptCount !== undefined) addField('attempt_count', updates.attemptCount);
+      if (updates.lastError !== undefined) addField('last_error', updates.lastError);
+
+      // If no fields to update, return early
+      if (setClauses.length === 0) {
+        return { success: true };
+      }
+
+      // Add WHERE clause parameters
+      values.push(id, this.userId);
+      const whereClause = `WHERE id = $${paramIndex++} AND user_id = $${paramIndex}`;
+
+      // Execute the dynamic query using Neon's direct function call syntax
+      const query = `UPDATE tasks SET ${setClauses.join(', ')} ${whereClause}`;
+      await sql(query, values);
 
       return { success: true };
     } catch (error) {

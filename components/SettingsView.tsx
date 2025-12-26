@@ -13,10 +13,11 @@ import {
   Columns,
   Plus,
   Github,
+  AlertCircle,
 } from 'lucide-react';
 import { UserMenu } from './UserMenu';
 import { useUIStore } from '../stores/uiStore';
-import { useProjectStore } from '../stores/projectStore';
+import { useProjectStore, selectHasActiveAutoclaudeTasks, selectHasAutoclaudeHistory } from '../stores/projectStore';
 import { PROJECT_COLORS } from '../types';
 
 export const SettingsView: React.FC = () => {
@@ -33,6 +34,9 @@ export const SettingsView: React.FC = () => {
   } = useProjectStore();
 
   const currentProject = projects.find(p => p.id === currentProjectId);
+  const hasActiveAutoclaudeTasks = useProjectStore(state => selectHasActiveAutoclaudeTasks(state, currentProjectId || undefined));
+  const hasAutoclaudeHistory = useProjectStore(state => selectHasAutoclaudeHistory(state, currentProjectId || undefined));
+  const isRepoLocked = hasActiveAutoclaudeTasks || hasAutoclaudeHistory;
 
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectName, setProjectName] = useState(currentProject?.name || '');
@@ -220,11 +224,20 @@ export const SettingsView: React.FC = () => {
                 onChange={(e) => setRepoUrl(e.target.value)}
                 onBlur={() => handleUpdateRepoUrl(repoUrl)}
                 placeholder="https://github.com/user/repo"
-                className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan"
+                disabled={isRepoLocked}
+                title={isRepoLocked ? "Repository is locked after AUTOCLAUDE has been used" : undefined}
+                className={`w-full bg-black/30 border border-white/10 rounded px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan ${isRepoLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
-              <p className="text-xs font-pixel text-white/30 mt-1">
-                Link this project to a GitHub repo for AUTOCLAUDE automation
-              </p>
+              {isRepoLocked ? (
+                <p className="text-xs font-pixel text-white/40 mt-1 flex items-center gap-1">
+                  <AlertCircle size={10} />
+                  Repository locked after AUTOCLAUDE usage
+                </p>
+              ) : (
+                <p className="text-xs font-pixel text-white/30 mt-1">
+                  Link this project to a GitHub repo for AUTOCLAUDE automation
+                </p>
+              )}
             </div>
 
             {/* Archive Project */}

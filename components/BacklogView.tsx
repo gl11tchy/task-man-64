@@ -34,7 +34,7 @@ import {
   AlertCircle,
   Bot,
 } from 'lucide-react';
-import { useProjectStore } from '../stores/projectStore';
+import { useProjectStore, selectHasActiveAutoclaudeTasks, selectHasAutoclaudeHistory } from '../stores/projectStore';
 import { Task } from '../types';
 import { AutoclaudeToggle } from './AutoclaudeToggle';
 import { AutoclaudeActivityFeed } from './AutoclaudeActivityFeed';
@@ -271,6 +271,9 @@ export const BacklogView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [repoUrl, setRepoUrl] = useState(currentProject?.repoUrl || '');
   const [repoSaved, setRepoSaved] = useState(false);
+  const hasActiveAutoclaudeTasks = useProjectStore(state => selectHasActiveAutoclaudeTasks(state, currentProjectId || undefined));
+  const hasAutoclaudeHistory = useProjectStore(state => selectHasAutoclaudeHistory(state, currentProjectId || undefined));
+  const isRepoLocked = hasActiveAutoclaudeTasks || hasAutoclaudeHistory;
 
   // Update local state when project changes
   React.useEffect(() => {
@@ -400,7 +403,9 @@ export const BacklogView: React.FC = () => {
                 onBlur={handleSaveRepoUrl}
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveRepoUrl()}
                 placeholder="https://github.com/owner/repo"
-                className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan"
+                disabled={isRepoLocked}
+                title={isRepoLocked ? "Repository is locked after AUTOCLAUDE has been used" : undefined}
+                className={`flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan ${isRepoLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
               {repoSaved && (
                 <span className="flex items-center gap-1 text-arcade-green font-pixel text-xs">
@@ -409,10 +414,16 @@ export const BacklogView: React.FC = () => {
                 </span>
               )}
             </div>
-            {!repoUrl && (
+            {!repoUrl && !isRepoLocked && (
               <p className="text-xs font-pixel text-amber-400/60 mt-1 flex items-center gap-1">
                 <AlertCircle size={10} />
                 Set a repo URL to enable AUTOCLAUDE for this project
+              </p>
+            )}
+            {isRepoLocked && (
+              <p className="text-xs font-pixel text-white/40 mt-1 flex items-center gap-1">
+                <AlertCircle size={10} />
+                Repository locked after AUTOCLAUDE usage
               </p>
             )}
           </div>
