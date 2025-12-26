@@ -69,7 +69,7 @@ async function poll(): Promise<number> {
     }
     for (const task of feedbackTasks) {
       // Claim before processing to prevent race conditions with other daemons
-      const claimed = await db.claimTask(task.id);
+      const claimed = await db.claimTask(task.id, task.columns.inProgress);
       if (claimed) {
         console.log(`Claimed feedback task: ${task.id}`);
         await processFeedbackTask(task);
@@ -82,7 +82,7 @@ async function poll(): Promise<number> {
       console.log(`Found ${newTasks.length} claimable task(s)`);
     }
     for (const task of newTasks) {
-      const claimed = await db.claimTask(task.id);
+      const claimed = await db.claimTask(task.id, task.columns.inProgress);
       if (claimed) {
         console.log(`Claimed task: ${task.id}`);
         await processNewTask(task);

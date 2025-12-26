@@ -24,12 +24,16 @@ import {
   Trash2,
   ArrowRight,
   Search,
-  Filter,
   CheckSquare,
   Square,
   Calendar,
   Tag,
   Plus,
+  Github,
+  Settings,
+  ExternalLink,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { Task } from '../types';
@@ -251,15 +255,33 @@ const BulkActions: React.FC<BulkActionsProps> = ({
 export const BacklogView: React.FC = () => {
   const {
     tasks,
+    projects,
     currentProjectId,
     addTask,
     deleteTask,
     promoteFromBacklog,
     reorderBacklogTasks,
+    updateProject,
   } = useProjectStore();
 
+  const currentProject = projects.find(p => p.id === currentProjectId);
+  
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [repoUrl, setRepoUrl] = useState(currentProject?.repoUrl || '');
+  const [repoSaved, setRepoSaved] = useState(false);
+
+  // Update local state when project changes
+  React.useEffect(() => {
+    setRepoUrl(currentProject?.repoUrl || '');
+  }, [currentProject?.repoUrl]);
+
+  const handleSaveRepoUrl = async () => {
+    if (!currentProjectId) return;
+    await updateProject(currentProjectId, { repoUrl: repoUrl || null });
+    setRepoSaved(true);
+    setTimeout(() => setRepoSaved(false), 2000);
+  };
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const sensors = useSensors(
@@ -354,14 +376,72 @@ export const BacklogView: React.FC = () => {
 
   const taskIds = useMemo(() => filteredTasks.map((t) => t.id), [filteredTasks]);
 
+  // Count autoclaude-enabled tasks
+  const autoclaudeTaskCount = tasks.filter(
+    t => t.projectId === currentProjectId && t.autoclaudeEnabled
+  ).length;
+
   return (
     <div className="flex-1 flex flex-col relative overflow-hidden">
+      {/* Configuration Panel */}
+      <div className="px-4 py-4 border-b border-white/10 bg-black/20">
+        <div className="flex items-start gap-4">
+          <div className="flex-1">
+            <label className="text-xs font-pixel text-white/40 mb-2 block flex items-center gap-2">
+              <Github size={12} />
+              GitHub Repository
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                onBlur={handleSaveRepoUrl}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveRepoUrl()}
+                placeholder="https://github.com/owner/repo"
+                className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 font-pixel text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-arcade-cyan"
+              />
+              {repoSaved && (
+                <span className="flex items-center gap-1 text-arcade-green font-pixel text-xs">
+                  <Check size={12} />
+                  Saved
+                </span>
+              )}
+            </div>
+            {!repoUrl && (
+              <p className="text-xs font-pixel text-amber-400/60 mt-1 flex items-center gap-1">
+                <AlertCircle size={10} />
+                Set a repo URL to enable AUTOCLAUDE for this project
+              </p>
+            )}
+          </div>
+          
+          <div className="text-right">
+            <div className="text-xs font-pixel text-white/40 mb-1">Status</div>
+            <div className={`font-pixel text-sm ${repoUrl ? 'text-arcade-green' : 'text-white/30'}`}>
+              {repoUrl ? 'Ready' : 'Not configured'}
+            </div>
+            <div className="text-xs font-pixel text-white/30 mt-1">
+              {autoclaudeTaskCount} task{autoclaudeTaskCount !== 1 ? 's' : ''} enabled
+            </div>
+          </div>
+        </div>
+        
+        {repoUrl && (
+          <div className="mt-3 p-2 bg-arcade-cyan/5 border border-arcade-cyan/20 rounded-lg">
+            <p className="text-xs font-pixel text-arcade-cyan/80">
+              Run the daemon: <code className="bg-black/30 px-1.5 py-0.5 rounded">npm run autoclaude</code>
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
         <div>
-          <h2 className="font-game text-sm text-arcade-cyan">AUTOCLAUDE</h2>
+          <h2 className="font-game text-sm text-arcade-cyan">TASK QUEUE</h2>
           <p className="text-xs font-pixel text-white/40 mt-1">
-            {backlogTasks.length} item{backlogTasks.length !== 1 ? 's' : ''} configured
+            {backlogTasks.length} item{backlogTasks.length !== 1 ? 's' : ''} in backlog
           </p>
         </div>
 

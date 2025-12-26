@@ -1,11 +1,11 @@
 import * as db from './db.js';
+import { TaskWithColumns } from './db.js';
 import * as git from './git.js';
 import * as github from './github.js';
 import * as claude from './claude.js';
-import { TaskWithRepo } from './types.js';
 import { CONFIG } from './config.js';
 
-export async function processNewTask(task: TaskWithRepo): Promise<void> {
+export async function processNewTask(task: TaskWithColumns): Promise<void> {
   const branchName = `autoclaude/${task.id.slice(0, 8)}`;
   const isRetry = (task.attempt_count ?? 0) > 0;
 
@@ -67,7 +67,7 @@ export async function processNewTask(task: TaskWithRepo): Promise<void> {
 
     // 7. Mark resolved
     console.log(`[${task.id}] Done! PR: ${prUrl}`);
-    await db.resolveTask(task.id, prUrl);
+    await db.resolveTask(task.id, prUrl, task.columns.resolved);
 
     // 8. Cleanup work directory on success
     if (CONFIG.CLEANUP_ON_SUCCESS) {
@@ -78,12 +78,12 @@ export async function processNewTask(task: TaskWithRepo): Promise<void> {
   } catch (error) {
     console.error(`[${task.id}] Error:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await db.recordError(task.id, errorMessage);
+    await db.recordError(task.id, errorMessage, task.columns.backlog);
     // Keep work directory on error for debugging
   }
 }
 
-export async function processFeedbackTask(task: TaskWithRepo): Promise<void> {
+export async function processFeedbackTask(task: TaskWithColumns): Promise<void> {
   const branchName = `autoclaude/${task.id.slice(0, 8)}`;
   const isRetry = (task.attempt_count ?? 0) > 0;
 
@@ -130,9 +130,9 @@ Please address this feedback and make the necessary changes.
       await github.addPRComment(workDir, branchName, commentText);
     }
 
-    // 6. Move back to resolved (resolveTask already clears feedback)
+    // 6. Move back to resolved
     console.log(`[${task.id}] Feedback addressed!`);
-    await db.resolveTask(task.id, task.pr_url!);
+    await db.resolveTask(task.id, task.pr_url!, task.columns.resolved);
 
     // 7. Cleanup work directory on success
     if (CONFIG.CLEANUP_ON_SUCCESS) {
@@ -144,7 +144,6 @@ Please address this feedback and make the necessary changes.
     console.error(`[${task.id}] Error:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     // Use recordFeedbackError to keep task in IN_PROGRESS column
-    // This ensures it's retried as a feedback task, not as a new task
     await db.recordFeedbackError(task.id, errorMessage);
     // Keep work directory on error for debugging
   }

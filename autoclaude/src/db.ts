@@ -4,37 +4,115 @@ import { Task, Project, TaskWithRepo } from './types.js';
 
 const sql = neon(CONFIG.DATABASE_URL);
 
-// Get claimable tasks (in backlog, autoclaude enabled, not claimed or claim expired, under retry limit)
-export async function getClaimableTasks(): Promise<TaskWithRepo[]> {
-  const claimTimeout = new Date(Date.now() - CONFIG.CLAIM_TIMEOUT_MS).toISOString();
+// Column name patterns to match (case-insensitive)
+const BACKLOG_PATTERNS = ['backlog', 'todo', 'to do', 'to-do'];
+const IN_PROGRESS_PATTERNS = ['in progress', 'in-progress', 'doing', 'wip', 'working'];
+const RESOLVED_PATTERNS = ['done', 'resolved', 'complete', 'completed', 'finished'];
+
+function matchesPattern(name: string, patterns: string[]): boolean {
+  const lower = name.toLowerCase();
+  return patterns.some(p => lower.includes(p));
+}
+
+export interface ProjectColumns {
+  backlog: string;
+  inProgress: string;
+  resolved: string;
+}
+
+// Cache for project columns to avoid repeated lookups
+const columnCache = new Map<string, ProjectColumns>();
+
+// Get column IDs for a project by matching column names
+export async function getProjectColumns(projectId: string): Promise<ProjectColumns | null> {
+  // Check cache first
+  const cached = columnCache.get(projectId);
+  if (cached) return cached;
 
   const rows = await sql`
-    SELECT t.*, p.repo_url
+    SELECT id, name FROM kanban_columns 
+    WHERE project_id = ${projectId}
+    ORDER BY "order" ASC
+  `;
+  
+  let backlog: string | null = null;
+  let inProgress: string | null = null;
+  let resolved: string | null = null;
+  
+  for (const row of rows) {
+    const name = row.name as string;
+    const id = row.id as string;
+    
+    if (!backlog && matchesPattern(name, BACKLOG_PATTERNS)) {
+      backlog = id;
+    } else if (!inProgress && matchesPattern(name, IN_PROGRESS_PATTERNS)) {
+      inProgress = id;
+    } else if (!resolved && matchesPattern(name, RESOLVED_PATTERNS)) {
+      resolved = id;
+    }
+  }
+  
+  // Fallback: use first/middle/last columns if pattern matching fails
+  if (!backlog && rows.length > 0) backlog = rows[0].id as string;
+  if (!resolved && rows.length > 0) resolved = rows[rows.length - 1].id as string;
+  if (!inProgress && rows.length > 1) inProgress = rows[Math.floor(rows.length / 2)].id as string;
+  
+  if (!backlog || !inProgress || !resolved) return null;
+  
+  const columns = { backlog, inProgress, resolved };
+  columnCache.set(projectId, columns);
+  return columns;
+}
+
+// Extended task type with column info
+export interface TaskWithColumns extends TaskWithRepo {
+  columns: ProjectColumns;
+}
+
+// Get claimable tasks (in backlog, autoclaude enabled, not claimed or claim expired, under retry limit)
+// Queries across ALL projects and matches backlog columns by name pattern
+export async function getClaimableTasks(): Promise<TaskWithColumns[]> {
+  const claimTimeout = new Date(Date.now() - CONFIG.CLAIM_TIMEOUT_MS).toISOString();
+
+  // Get all autoclaude-enabled tasks that aren't claimed
+  const rows = await sql`
+    SELECT t.*, p.repo_url, c.name as column_name
     FROM tasks t
     JOIN projects p ON t.project_id = p.id
-    WHERE t.kanban_column_id = ${CONFIG.BACKLOG_COLUMN_ID}
-      AND t.autoclaude_enabled = true
+    JOIN kanban_columns c ON t.kanban_column_id = c.id
+    WHERE t.autoclaude_enabled = true
       AND p.repo_url IS NOT NULL
       AND (t.claimed_at IS NULL OR t.claimed_at < ${claimTimeout})
       AND (t.attempt_count IS NULL OR t.attempt_count < ${CONFIG.MAX_RETRY_ATTEMPTS})
     ORDER BY t.created_at ASC
-    LIMIT ${CONFIG.MAX_CONCURRENT}
   `;
 
-  return rows as TaskWithRepo[];
+  // Filter to only tasks in backlog columns and add column info
+  const tasks: TaskWithColumns[] = [];
+  for (const row of rows) {
+    const columnName = row.column_name as string;
+    if (!matchesPattern(columnName, BACKLOG_PATTERNS)) continue;
+    
+    const columns = await getProjectColumns(row.project_id as string);
+    if (!columns) continue;
+    
+    tasks.push({ ...row, columns } as TaskWithColumns);
+    if (tasks.length >= CONFIG.MAX_CONCURRENT) break;
+  }
+
+  return tasks;
 }
 
 // Get tasks that were kicked back to in-progress with new feedback
-// Any daemon can pick up feedback tasks - we use claim mechanism to prevent races
-export async function getFeedbackTasks(): Promise<TaskWithRepo[]> {
+export async function getFeedbackTasks(): Promise<TaskWithColumns[]> {
   const claimTimeout = new Date(Date.now() - CONFIG.CLAIM_TIMEOUT_MS).toISOString();
 
   const rows = await sql`
-    SELECT t.*, p.repo_url
+    SELECT t.*, p.repo_url, c.name as column_name
     FROM tasks t
     JOIN projects p ON t.project_id = p.id
-    WHERE t.kanban_column_id = ${CONFIG.IN_PROGRESS_COLUMN_ID}
-      AND t.autoclaude_enabled = true
+    JOIN kanban_columns c ON t.kanban_column_id = c.id
+    WHERE t.autoclaude_enabled = true
       AND t.pr_url IS NOT NULL
       AND t.feedback IS NOT NULL
       AND t.feedback != ''
@@ -44,18 +122,30 @@ export async function getFeedbackTasks(): Promise<TaskWithRepo[]> {
     ORDER BY t.created_at ASC
   `;
 
-  return rows as TaskWithRepo[];
+  // Filter to only tasks in in-progress columns
+  const tasks: TaskWithColumns[] = [];
+  for (const row of rows) {
+    const columnName = row.column_name as string;
+    if (!matchesPattern(columnName, IN_PROGRESS_PATTERNS)) continue;
+    
+    const columns = await getProjectColumns(row.project_id as string);
+    if (!columns) continue;
+    
+    tasks.push({ ...row, columns } as TaskWithColumns);
+  }
+
+  return tasks;
 }
 
-// Claim a task (works for both new tasks and feedback tasks)
-export async function claimTask(taskId: string): Promise<boolean> {
+// Claim a task - move to in-progress column
+export async function claimTask(taskId: string, inProgressColumnId: string): Promise<boolean> {
   const claimTimeout = new Date(Date.now() - CONFIG.CLAIM_TIMEOUT_MS).toISOString();
 
   const result = await sql`
     UPDATE tasks
     SET claimed_at = NOW(),
         claimed_by = ${CONFIG.INSTANCE_ID},
-        kanban_column_id = ${CONFIG.IN_PROGRESS_COLUMN_ID}
+        kanban_column_id = ${inProgressColumnId}
     WHERE id = ${taskId}
       AND (claimed_at IS NULL OR claimed_at < ${claimTimeout})
     RETURNING id
@@ -65,11 +155,10 @@ export async function claimTask(taskId: string): Promise<boolean> {
 }
 
 // Mark task as resolved with PR
-// Clears claimed_by so any daemon can handle future feedback
-export async function resolveTask(taskId: string, prUrl: string): Promise<void> {
+export async function resolveTask(taskId: string, prUrl: string, resolvedColumnId: string): Promise<void> {
   await sql`
     UPDATE tasks
-    SET kanban_column_id = ${CONFIG.RESOLVED_COLUMN_ID},
+    SET kanban_column_id = ${resolvedColumnId},
         pr_url = ${prUrl},
         feedback = NULL,
         last_error = NULL,
@@ -80,21 +169,19 @@ export async function resolveTask(taskId: string, prUrl: string): Promise<void> 
 }
 
 // Record error for a new task - move back to backlog for retry
-// Tasks that exceed retry limit stay in backlog but won't be picked up
-export async function recordError(taskId: string, error: string): Promise<void> {
+export async function recordError(taskId: string, error: string, backlogColumnId: string): Promise<void> {
   await sql`
     UPDATE tasks
     SET last_error = ${error},
         attempt_count = COALESCE(attempt_count, 0) + 1,
         claimed_at = NULL,
         claimed_by = NULL,
-        kanban_column_id = ${CONFIG.BACKLOG_COLUMN_ID}
+        kanban_column_id = ${backlogColumnId}
     WHERE id = ${taskId}
   `;
 }
 
 // Record error for a feedback task - keep in IN_PROGRESS so it's retried as feedback
-// The feedback is preserved so the daemon will try again with the same context
 export async function recordFeedbackError(taskId: string, error: string): Promise<void> {
   await sql`
     UPDATE tasks
@@ -104,7 +191,6 @@ export async function recordFeedbackError(taskId: string, error: string): Promis
         claimed_by = NULL
     WHERE id = ${taskId}
   `;
-  // Note: kanban_column_id stays as IN_PROGRESS, feedback is preserved
 }
 
 // Clear feedback after addressing it

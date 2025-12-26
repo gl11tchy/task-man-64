@@ -4,11 +4,11 @@ A Node.js daemon that automatically processes tasks from the taskman64 kanban bo
 
 ## How It Works
 
-1. **Polling**: The daemon polls the database for tasks in the configured "Backlog" column that have `autoclaude_enabled = true`
+1. **Polling**: The daemon polls the database for tasks with `autoclaude_enabled = true` in "Backlog"-like columns
 2. **Claiming**: When a task is found, it claims it (moves to "In Progress") to prevent other instances from working on it
 3. **Processing**: Clones the project's repository, creates a branch, and runs Claude CLI with the task description
 4. **PR Creation**: Commits changes, pushes the branch, and creates a GitHub PR
-5. **Resolution**: Moves the task to "Resolved" and records the PR URL
+5. **Resolution**: Moves the task to "Done/Resolved" and records the PR URL
 6. **Feedback Loop**: If a user moves the task back to "In Progress" with feedback, the daemon will address the feedback and push updates
 
 ## Prerequisites
@@ -29,20 +29,16 @@ A Node.js daemon that automatically processes tasks from the taskman64 kanban bo
    ```bash
    # Database connection (get from Neon dashboard)
    DATABASE_URL=postgresql://user:pass@host/db
-
-   # Get column IDs from your database
-   # Run: SELECT id, name FROM kanban_columns WHERE project_id = 'your-project-id';
-   BACKLOG_COLUMN_ID=your-backlog-column-id
-   IN_PROGRESS_COLUMN_ID=your-in-progress-column-id
-   RESOLVED_COLUMN_ID=your-done-column-id
    ```
 
-3. Install dependencies:
+3. In the taskman64 UI, set the **Repository URL** for your project in Settings
+
+4. Install dependencies:
    ```bash
    npm install
    ```
 
-4. Run the daemon:
+5. Run the daemon:
    ```bash
    npm start
    ```
@@ -55,18 +51,25 @@ A Node.js daemon that automatically processes tasks from the taskman64 kanban bo
 | `POLL_INTERVAL_MS` | `10000` | How often to check for new tasks (ms) |
 | `WORK_DIR` | `/tmp/autoclaude` | Directory for cloning repositories |
 | `INSTANCE_ID` | `autoclaude-{timestamp}` | Unique ID for this daemon instance |
-| `BACKLOG_COLUMN_ID` | (required) | Kanban column ID for new tasks |
-| `IN_PROGRESS_COLUMN_ID` | (required) | Kanban column ID for active tasks |
-| `RESOLVED_COLUMN_ID` | (required) | Kanban column ID for completed tasks |
 | `MAX_CONCURRENT` | `1` | Maximum concurrent tasks to process |
 | `CLAIM_TIMEOUT_MS` | `3600000` | Release claimed tasks after this time (1 hour) |
+
+## Column Detection
+
+The daemon automatically detects your kanban columns by matching common naming patterns:
+
+- **Backlog**: "Backlog", "Todo", "To Do", "To-Do"
+- **In Progress**: "In Progress", "In-Progress", "Doing", "WIP", "Working"
+- **Done**: "Done", "Resolved", "Complete", "Completed", "Finished"
+
+If your columns don't match these patterns, the daemon falls back to using the first, middle, and last columns.
 
 ## Usage
 
 ### Enabling AUTOCLAUDE for a Task
 
 1. In the taskman64 UI, click the robot icon on a task card to enable AUTOCLAUDE
-2. Make sure the project has a `repo_url` configured in Settings
+2. Make sure the project has a Repository URL configured in Settings
 3. Move the task to the Backlog column (or create it there)
 
 ### Providing Feedback
@@ -93,9 +96,9 @@ Each instance will claim different tasks and avoid conflicts through the `claime
 
 ### Task not being picked up
 - Verify `autoclaude_enabled` is `true` on the task
-- Verify the project has a `repo_url` set
-- Verify the task is in the correct Backlog column
-- Check the column IDs in your `.env` match the database
+- Verify the project has a Repository URL set in Settings
+- Verify the task is in a column with "Backlog", "Todo", or similar name
+- Check the daemon logs for column detection messages
 
 ### Claude CLI errors
 - Ensure Claude CLI is installed: `claude --version`
