@@ -39,7 +39,7 @@ export async function getProjectColumns(projectId: string): Promise<ProjectColum
   const rows = await sql`
     SELECT id, name FROM kanban_columns 
     WHERE project_id = ${projectId}
-    ORDER BY "order" ASC
+    ORDER BY position ASC
   `;
   
   let backlog: string | null = null;
