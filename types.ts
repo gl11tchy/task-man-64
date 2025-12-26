@@ -113,3 +113,11 @@ export interface AutoclaudeEvent {
   // Optional enrichment from JOIN
   taskText?: string;
 }
+
+/**
+ * Helper to check if autoclaude is paused for a project.
+ * Default is true (paused) for safety - must explicitly enable.
+ */
+export function isAutoclaudePaused(project: Project | null | undefined): boolean {
+  return project?.autoclaudePaused ?? true;
+}

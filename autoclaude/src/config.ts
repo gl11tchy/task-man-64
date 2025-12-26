@@ -1,5 +1,6 @@
 import { config } from 'dotenv';
 import { resolve } from 'path';
+import { randomUUID } from 'crypto';
 
 // Load .env from parent directory (main project) first, then local .env
 config({ path: resolve(process.cwd(), '../.env') });
@@ -33,7 +34,7 @@ export const CONFIG = {
   DATABASE_URL: requireEnv('DATABASE_URL', 'VITE_DATABASE_URL'),
   POLL_INTERVAL_MS: parseIntWithDefault(getEnv('POLL_INTERVAL_MS'), 10000, 'POLL_INTERVAL_MS'),
   WORK_DIR: getEnv('WORK_DIR') || '/tmp/autoclaude',
-  INSTANCE_ID: getEnv('INSTANCE_ID') || `autoclaude-${Date.now()}`,
+  INSTANCE_ID: getEnv('INSTANCE_ID') || `autoclaude-${randomUUID().slice(0, 8)}`,
   CLAUDE_MODEL: getEnv('CLAUDE_MODEL') || 'sonnet',
   MAX_CONCURRENT: parseIntWithDefault(getEnv('MAX_CONCURRENT'), 1, 'MAX_CONCURRENT'),
   CLAIM_TIMEOUT_MS: parseIntWithDefault(getEnv('CLAIM_TIMEOUT_MS'), 3600000, 'CLAIM_TIMEOUT_MS'),

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Project, KanbanColumn, Task, PROJECT_COLORS, AutoclaudeEvent } from '../types';
+import { Project, KanbanColumn, Task, PROJECT_COLORS, AutoclaudeEvent, isAutoclaudePaused } from '../types';
 import { ProjectStorage } from '../services/projectStorage';
 import { TaskStorage } from '../services/taskStorage';
 import { AutoclaudeEventStorage } from '../services/autoclaudeEventStorage';
@@ -722,7 +722,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoadingEvents: true });
     
     try {
-      const events = await autoclaudeEventStorage.loadEvents(targetProjectId, 50);
+      // Load slightly more than displayed to have buffer for filtering
+      const events = await autoclaudeEventStorage.loadEvents(targetProjectId, 25);
       set({ autoclaudeEvents: events, isLoadingEvents: false });
     } catch (error) {
       console.error('Failed to load autoclaude events:', error);
@@ -737,7 +738,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
 
-    const newPausedState = !(project.autoclaudePaused ?? true);
+    const newPausedState = !isAutoclaudePaused(project);
     
     const result = await projectStorage.updateProject(projectId, { autoclaudePaused: newPausedState });
     if (result.success) {

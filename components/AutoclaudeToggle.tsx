@@ -1,16 +1,25 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, Bot, Loader2 } from 'lucide-react';
+import { Play, Pause, Bot, Loader2, Circle } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
+import { isAutoclaudePaused } from '../types';
+
+// Check if daemon has been active recently (within last 2 minutes)
+const DAEMON_ACTIVE_THRESHOLD_MS = 120000;
 
 export const AutoclaudeToggle: React.FC = () => {
-  const { projects, currentProjectId, toggleAutoclaudePaused } = useProjectStore();
+  const { projects, currentProjectId, toggleAutoclaudePaused, autoclaudeEvents } = useProjectStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const currentProject = projects.find(p => p.id === currentProjectId);
-  const isPaused = currentProject?.autoclaudePaused ?? true;
+  const isPaused = isAutoclaudePaused(currentProject);
   const hasRepoUrl = !!currentProject?.repoUrl;
+  
+  // Check if daemon is active based on recent events
+  const latestEvent = autoclaudeEvents[0];
+  const isDaemonActive = latestEvent && 
+    (Date.now() - latestEvent.createdAt) < DAEMON_ACTIVE_THRESHOLD_MS;
 
   const handleToggle = async () => {
     if (!currentProjectId || !hasRepoUrl || isLoading) return;
@@ -73,6 +82,17 @@ export const AutoclaudeToggle: React.FC = () => {
       </motion.button>
       {error && (
         <span className="font-pixel text-[10px] text-red-400">{error}</span>
+      )}
+      {!isPaused && (
+        <div className="flex items-center gap-1.5">
+          <Circle 
+            size={6} 
+            className={isDaemonActive ? 'fill-arcade-green text-arcade-green' : 'fill-amber-400 text-amber-400'} 
+          />
+          <span className={`font-pixel text-[10px] ${isDaemonActive ? 'text-white/40' : 'text-amber-400'}`}>
+            {isDaemonActive ? 'Daemon connected' : 'Waiting for daemon...'}
+          </span>
+        </div>
       )}
     </div>
   );

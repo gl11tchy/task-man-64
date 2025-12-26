@@ -12,7 +12,7 @@ import {
   Rocket,
 } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
-import { AutoclaudeEvent, AutoclaudeEventType } from '../types';
+import { AutoclaudeEvent, AutoclaudeEventType, isAutoclaudePaused } from '../types';
 
 const EVENT_ICONS: Record<AutoclaudeEventType, React.ReactNode> = {
   task_started: <Rocket size={14} className="text-arcade-cyan" />,
@@ -75,12 +75,14 @@ const EventItem: React.FC<{ event: AutoclaudeEvent }> = ({ event }) => {
   );
 };
 
+const MAX_DISPLAYED_EVENTS = 20;
+
 export const AutoclaudeActivityFeed: React.FC = () => {
   const { autoclaudeEvents, loadAutoclaudeEvents, isLoadingEvents, currentProjectId, projects } = useProjectStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const currentProject = projects.find(p => p.id === currentProjectId);
-  const isPaused = currentProject?.autoclaudePaused ?? true;
+  const isPaused = isAutoclaudePaused(currentProject);
 
   // Stable reference to avoid effect re-running on every render
   const loadEventsRef = useRef(loadAutoclaudeEvents);
@@ -137,7 +139,7 @@ export const AutoclaudeActivityFeed: React.FC = () => {
   return (
     <div className="space-y-1.5 max-h-48 overflow-y-auto">
       <AnimatePresence mode="popLayout">
-        {autoclaudeEvents.slice(0, 15).map((event) => (
+        {autoclaudeEvents.slice(0, MAX_DISPLAYED_EVENTS).map((event) => (
           <EventItem key={event.id} event={event} />
         ))}
       </AnimatePresence>
