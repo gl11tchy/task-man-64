@@ -30,6 +30,9 @@ export async function runClaude(
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    // Close stdin immediately - we're not sending any input
+    proc.stdin?.end();
+
     let stdout = '';
     let stderr = '';
     let timedOut = false;
