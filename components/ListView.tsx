@@ -1,7 +1,7 @@
 import React from 'react';
 import { Reorder, motion, AnimatePresence } from 'framer-motion';
 import { Task } from '../types';
-import { GripVertical, X, PlayCircle, CheckCircle, RotateCcw, Archive } from 'lucide-react';
+import { GripVertical, X, PlayCircle, CheckCircle, RotateCcw, Archive, Edit2 } from 'lucide-react';
 
 interface ListViewProps {
   activeTasks: Task[];
@@ -12,17 +12,19 @@ interface ListViewProps {
   onSelect: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onRestore: (taskId: string) => void;
+  onEdit?: (taskId: string) => void;
 }
 
-export const ListView: React.FC<ListViewProps> = ({ 
-  activeTasks, 
-  completedTasks, 
+export const ListView: React.FC<ListViewProps> = ({
+  activeTasks,
+  completedTasks,
   currentTab,
   onTabChange,
-  onReorder, 
-  onSelect, 
+  onReorder,
+  onSelect,
   onDelete,
-  onRestore
+  onRestore,
+  onEdit
 }) => {
   
   const isHistory = currentTab === 'completed';
@@ -97,6 +99,15 @@ export const ListView: React.FC<ListViewProps> = ({
                      >
                         <RotateCcw size={18} />
                      </button>
+                     {onEdit && (
+                       <button
+                          onClick={() => onEdit(task.id)}
+                          className="p-2 text-white/20 hover:text-arcade-purple transition-colors"
+                          title="Edit Mission"
+                       >
+                          <Edit2 size={18} />
+                       </button>
+                     )}
                      <button
                         onClick={() => onDelete(task.id)}
                         className="p-2 text-white/20 hover:text-red-500 transition-colors"
@@ -140,7 +151,18 @@ export const ListView: React.FC<ListViewProps> = ({
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
-                      <motion.button 
+                      {onEdit && (
+                        <motion.button
+                          whileHover={{ scale: 1.2, color: "#9d00ff" }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => onEdit(task.id)}
+                          className="p-2 text-white/40 hover:text-arcade-purple transition-colors"
+                          title="Edit Mission"
+                        >
+                          <Edit2 size={20} />
+                        </motion.button>
+                      )}
+                      <motion.button
                         whileHover={{ scale: 1.2, color: "#ff00ff" }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => onDelete(task.id)}
@@ -148,7 +170,7 @@ export const ListView: React.FC<ListViewProps> = ({
                       >
                         <X size={20} />
                       </motion.button>
-                      <motion.button 
+                      <motion.button
                         whileHover={{ scale: 1.2, color: "#00ffff" }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => onSelect(task.id)}

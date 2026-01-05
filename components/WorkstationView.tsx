@@ -10,6 +10,7 @@ import { AppMode, Task } from '../types';
 import { useAudio } from '../hooks/useAudio';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
+import { TaskEditModal } from './TaskEditModal';
 
 export const WorkstationView: React.FC = () => {
   const { mode, setMode, muted, toggleMuted, setSidebarMobileOpen, score, addScore } = useUIStore();
@@ -26,6 +27,7 @@ export const WorkstationView: React.FC = () => {
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<'active' | 'completed'>('active');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   const { playSound } = useAudio(muted);
 
@@ -80,6 +82,18 @@ export const WorkstationView: React.FC = () => {
   const handleReorder = (reorderedActiveTasks: Task[]) => {
     reorderTasks(reorderedActiveTasks);
   };
+
+  const handleEditTask = (id: string) => {
+    setEditingTaskId(id);
+    playSound('click');
+  };
+
+  const handleSaveEdit = async (taskId: string, text: string) => {
+    await updateTask(taskId, { text });
+    playSound('click');
+  };
+
+  const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
 
   const handleModeToggle = (newMode: AppMode) => {
     setMode(newMode);
@@ -154,6 +168,7 @@ export const WorkstationView: React.FC = () => {
           }}
           onDelete={handleDeleteTask}
           onRestore={handleRestoreTask}
+          onEdit={handleEditTask}
         />
       )}
 
@@ -161,6 +176,13 @@ export const WorkstationView: React.FC = () => {
       <TaskInput
         onAdd={handleAddTask}
         disabled={showFocusView && mode === AppMode.AUTO}
+      />
+
+      <TaskEditModal
+        isOpen={!!editingTaskId}
+        task={editingTask || null}
+        onClose={() => setEditingTaskId(null)}
+        onSave={handleSaveEdit}
       />
     </>
   );
