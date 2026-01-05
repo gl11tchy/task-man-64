@@ -33,11 +33,13 @@ import {
   Check,
   AlertCircle,
   Bot,
+  Edit2,
 } from 'lucide-react';
 import { useProjectStore, selectHasActiveAutoclaudeTasks, selectHasAutoclaudeHistory } from '../stores/projectStore';
 import { Task } from '../types';
 import { AutoclaudeToggle } from './AutoclaudeToggle';
 import { AutoclaudeActivityFeed } from './AutoclaudeActivityFeed';
+import { TaskEditModal } from './TaskEditModal';
 
 // ============ Backlog Item Component ============
 
@@ -47,6 +49,7 @@ interface BacklogItemProps {
   onSelect: (selected: boolean) => void;
   onPromote: () => void;
   onDelete: () => void;
+  onEdit?: () => void;
   isDragging?: boolean;
 }
 
@@ -56,6 +59,7 @@ const BacklogItem: React.FC<BacklogItemProps> = ({
   onSelect,
   onPromote,
   onDelete,
+  onEdit,
   isDragging,
 }) => {
   const formatDate = (timestamp: number) => {
@@ -111,6 +115,15 @@ const BacklogItem: React.FC<BacklogItemProps> = ({
 
       {/* Actions */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="p-2 text-arcade-purple/60 hover:text-arcade-purple hover:bg-arcade-purple/10 rounded-lg transition-colors"
+            title="Edit"
+          >
+            <Edit2 size={16} />
+          </button>
+        )}
         <button
           onClick={onPromote}
           className="p-2 text-arcade-cyan/60 hover:text-arcade-cyan hover:bg-arcade-cyan/10 rounded-lg transition-colors"
@@ -260,6 +273,7 @@ export const BacklogView: React.FC = () => {
     currentProjectId,
     addTask,
     deleteTask,
+    updateTask,
     promoteFromBacklog,
     reorderBacklogTasks,
     updateProject,
@@ -287,6 +301,7 @@ export const BacklogView: React.FC = () => {
     setTimeout(() => setRepoSaved(false), 2000);
   };
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -363,6 +378,22 @@ export const BacklogView: React.FC = () => {
     selectedIds.delete(taskId);
     setSelectedIds(new Set(selectedIds));
   };
+
+  const handleEditSingle = (taskId: string) => {
+    setEditingTaskId(taskId);
+  };
+
+  const handleSaveEdit = async (taskId: string, text: string) => {
+    try {
+      await updateTask(taskId, { text });
+      setEditingTaskId(null);
+    } catch (error) {
+      console.error('Failed to save task edit:', error);
+      // Keep the modal open on failure so user can retry
+    }
+  };
+
+  const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
 
   const handleBulkPromote = async () => {
     for (const id of selectedIds) {
@@ -504,6 +535,7 @@ export const BacklogView: React.FC = () => {
                 onSelect={(selected) => handleSelect(task.id, selected)}
                 onPromote={() => handlePromoteSingle(task.id)}
                 onDelete={() => handleDeleteSingle(task.id)}
+                onEdit={() => handleEditSingle(task.id)}
               />
             ))}
           </SortableContext>
@@ -549,6 +581,13 @@ export const BacklogView: React.FC = () => {
           />
         )}
       </AnimatePresence>
+
+      <TaskEditModal
+        isOpen={!!editingTaskId}
+        task={editingTask || null}
+        onClose={() => setEditingTaskId(null)}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 };

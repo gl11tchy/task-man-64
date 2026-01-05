@@ -24,10 +24,11 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { Plus, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare } from 'lucide-react';
+import { Plus, Calendar, Flag, MoreHorizontal, Trash2, ArrowLeft, Bot, ExternalLink, MessageSquare, Edit2 } from 'lucide-react';
 import { useProjectStore } from '../stores/projectStore';
 import { useUIStore } from '../stores/uiStore';
 import { Task, KanbanColumn } from '../types';
+import { TaskEditModal } from './TaskEditModal';
 
 // ============ Spring Physics Constants ============
 
@@ -71,9 +72,10 @@ interface TaskCardProps {
   onMoveToBacklog?: () => void;
   onToggleAutoclaude?: () => void;
   onAddFeedback?: () => void;
+  onEdit?: () => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback, onEdit }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const priorityColors = {
@@ -131,6 +133,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging, onDelete, onMoveT
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="absolute right-0 top-full mt-1 bg-arcade-screen border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden min-w-32"
               >
+                {onEdit && (
+                  <button
+                    onClick={() => {
+                      onEdit();
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <Edit2 size={14} />
+                    <span className="font-pixel text-xs">Edit</span>
+                  </button>
+                )}
                 {onMoveToBacklog && (
                   <button
                     onClick={() => {
@@ -253,9 +267,10 @@ interface SortableTaskCardProps {
   onMoveToBacklog: () => void;
   onToggleAutoclaude: () => void;
   onAddFeedback: () => void;
+  onEdit: () => void;
 }
 
-const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback }) => {
+const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onMoveToBacklog, onToggleAutoclaude, onAddFeedback, onEdit }) => {
   const {
     attributes,
     listeners,
@@ -306,6 +321,7 @@ const SortableTaskCard: React.FC<SortableTaskCardProps> = ({ task, onDelete, onM
         onMoveToBacklog={onMoveToBacklog}
         onToggleAutoclaude={onToggleAutoclaude}
         onAddFeedback={onAddFeedback}
+        onEdit={onEdit}
       />
     </motion.div>
   );
@@ -321,6 +337,7 @@ interface KanbanColumnProps {
   onMoveToBacklog: (taskId: string) => void;
   onToggleAutoclaude: (taskId: string) => void;
   onAddFeedback: (taskId: string) => void;
+  onEditTask: (taskId: string) => void;
 }
 
 const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
@@ -331,6 +348,7 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
   onMoveToBacklog,
   onToggleAutoclaude,
   onAddFeedback,
+  onEditTask,
 }) => {
   const {
     setNodeRef,
@@ -383,6 +401,7 @@ const KanbanColumnComponent: React.FC<KanbanColumnProps> = ({
               onMoveToBacklog={() => onMoveToBacklog(task.id)}
               onToggleAutoclaude={() => onToggleAutoclaude(task.id)}
               onAddFeedback={() => onAddFeedback(task.id)}
+              onEdit={() => onEditTask(task.id)}
             />
           ))}
         </SortableContext>
@@ -579,6 +598,7 @@ export const KanbanBoard: React.FC = () => {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [quickAddColumnId, setQuickAddColumnId] = useState<string | null>(null);
   const [feedbackTaskId, setFeedbackTaskId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   // Store original task position for rollback if drag is canceled
   const [originalTaskState, setOriginalTaskState] = useState<{
     columnId: string | null;
@@ -904,6 +924,22 @@ export const KanbanBoard: React.FC = () => {
 
   const feedbackTask = feedbackTaskId ? tasks.find(t => t.id === feedbackTaskId) : null;
 
+  const handleEditTask = (taskId: string) => {
+    setEditingTaskId(taskId);
+  };
+
+  const handleSaveEdit = async (taskId: string, text: string) => {
+    try {
+      await updateTask(taskId, { text });
+      setEditingTaskId(null);
+    } catch (error) {
+      console.error('Failed to save task edit:', error);
+      // Keep the modal open on failure so user can retry
+    }
+  };
+
+  const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;
+
     if (columns.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -938,6 +974,7 @@ export const KanbanBoard: React.FC = () => {
                     onMoveToBacklog={handleMoveToBacklog}
                     onToggleAutoclaude={currentProject?.repoUrl ? handleToggleAutoclaude : undefined}
                     onAddFeedback={handleAddFeedback}
+                    onEditTask={handleEditTask}
                   />
                 ))}
             </div>
@@ -986,6 +1023,13 @@ export const KanbanBoard: React.FC = () => {
           />
         )}
       </AnimatePresence>
+
+      <TaskEditModal
+        isOpen={!!editingTaskId}
+        task={editingTask || null}
+        onClose={() => setEditingTaskId(null)}
+        onSave={handleSaveEdit}
+      />
     </>
   );
 };
