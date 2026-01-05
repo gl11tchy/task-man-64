@@ -21,7 +21,13 @@ export const TaskInput: React.FC<TaskInputProps> = ({ onAdd, disabled }) => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (!disabled && document.activeElement !== inputRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Don't steal focus if user is typing in another input, textarea, or contenteditable element
+        const activeEl = document.activeElement;
+        const isTypingElsewhere = activeEl instanceof HTMLInputElement ||
+                                   activeEl instanceof HTMLTextAreaElement ||
+                                   activeEl?.getAttribute('contenteditable') === 'true';
+
+        if (!disabled && !isTypingElsewhere && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             inputRef.current?.focus();
         }
     };
