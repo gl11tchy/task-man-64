@@ -89,8 +89,14 @@ export const WorkstationView: React.FC = () => {
   };
 
   const handleSaveEdit = async (taskId: string, text: string) => {
-    await updateTask(taskId, { text });
-    playSound('click');
+    try {
+      await updateTask(taskId, { text });
+      setEditingTaskId(null);
+      playSound('click');
+    } catch (error) {
+      console.error('Failed to save task edit:', error);
+      // Keep the modal open on failure so user can retry
+    }
   };
 
   const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;

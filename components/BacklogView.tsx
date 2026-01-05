@@ -384,7 +384,13 @@ export const BacklogView: React.FC = () => {
   };
 
   const handleSaveEdit = async (taskId: string, text: string) => {
-    await updateTask(taskId, { text });
+    try {
+      await updateTask(taskId, { text });
+      setEditingTaskId(null);
+    } catch (error) {
+      console.error('Failed to save task edit:', error);
+      // Keep the modal open on failure so user can retry
+    }
   };
 
   const editingTask = editingTaskId ? tasks.find(t => t.id === editingTaskId) : null;

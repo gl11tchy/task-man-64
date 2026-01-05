@@ -25,9 +25,12 @@ export const TaskEditModal: React.FC<TaskEditModalProps> = ({ isOpen, task, onCl
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (text.trim() && text.trim() !== task.text) {
+      // Parent handles closing on success
       onSave(task.id, text.trim());
+    } else {
+      // No changes, just close
+      onClose();
     }
-    onClose();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
